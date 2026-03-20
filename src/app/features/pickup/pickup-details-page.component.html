@@ -43,14 +43,15 @@
     </div>
 
     <div class="destination-preview">
-      <span class="pill">Destination locked</span>
+      <span class="pill">Warehouse Location</span>
       <strong>{{ warehouse.name }}</strong>
       <span>
         {{ warehouse.address.line1 }},
         @if (warehouse.address.line2) {
           {{ warehouse.address.line2 }},
         }
-        {{ warehouse.address.city }}, {{ warehouse.address.state }} {{ warehouse.address.postalCode }}
+        {{ warehouse.address.city }}, {{ warehouse.address.state }}
+        {{ warehouse.address.postalCode }}
       </span>
     </div>
 
@@ -94,7 +95,11 @@
 
       <label class="field">
         Apartment / access instructions
-        <input type="text" formControlName="instructions" placeholder="Gate code, building entry, etc." />
+        <input
+          type="text"
+          formControlName="instructions"
+          placeholder="Gate code, building entry, etc."
+        />
       </label>
     </div>
 
@@ -136,7 +141,13 @@
 
       <label class="field two-columns">
         Optional contribution to help cover pickup (USD)
-        <input type="number" min="1" step="1" formControlName="contributionAmount" placeholder="15" />
+        <input
+          type="number"
+          min="1"
+          step="1"
+          formControlName="contributionAmount"
+          placeholder="15"
+        />
       </label>
     </div>
 
