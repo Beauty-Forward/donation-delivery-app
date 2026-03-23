@@ -7,8 +7,9 @@ import {
   inject
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { filter, startWith } from 'rxjs';
 import {
   DEFAULT_WIZARD_FORM_STATE,
   DeliveryMethod,
@@ -74,7 +75,6 @@ export class DonationWizardPageComponent {
   @ViewChild('containerRef') private containerRef?: ElementRef<HTMLDivElement>;
 
   private readonly router = inject(Router);
-  private readonly route = inject(ActivatedRoute);
   private readonly stateStore = inject(DonationWizardStateService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -157,11 +157,17 @@ export class DonationWizardPageComponent {
   }
 
   ngOnInit(): void {
-    this.route.data.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((data) => {
-      const mode = (data['mode'] as RouteMode | undefined) ?? 'home';
-      this.syncToMode(mode);
-      this.persist();
-    });
+    this.router.events
+      .pipe(
+        filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+        startWith(new NavigationEnd(0, this.router.url, this.router.url)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe(() => {
+        const mode = this.resolveModeFromUrl(this.router.url);
+        this.syncToMode(mode);
+        this.persist();
+      });
   }
 
   protected get totalSteps(): number {
@@ -566,6 +572,28 @@ export class DonationWizardPageComponent {
     this.errors = {};
   }
 
+  private resolveModeFromUrl(url: string): RouteMode {
+    const normalized = url.split('?')[0]?.replace(/\/+$/, '') || '/';
+
+    if (normalized === '/') {
+      return 'home';
+    }
+
+    if (normalized === '/pickup') return 'pickup';
+    if (normalized === '/pickup/review') return 'pickup-review';
+    if (normalized === '/pickup/confirmation') return 'pickup-confirmation';
+
+    if (normalized === '/shipping') return 'shipping';
+    if (normalized === '/shipping/review') return 'shipping-review';
+    if (normalized === '/shipping/confirmation') return 'shipping-confirmation';
+
+    if (normalized === '/dropoff') return 'dropoff';
+    if (normalized === '/dropoff/review') return 'dropoff-review';
+    if (normalized === '/dropoff/confirmation') return 'dropoff-confirmation';
+
+    return 'home';
+  }
+
   private validateInfo(): boolean {
     const errors: Record<string, string> = {};
 
@@ -639,13 +667,10 @@ export class DonationWizardPageComponent {
   }
 
   private transitionLocal(nextStep: number): void {
-    this.fadeIn = false;
-    setTimeout(() => {
-      this.step = nextStep;
-      this.fadeIn = true;
-      this.persist();
-      this.scrollToTop();
-    }, 220);
+    this.step = nextStep;
+    this.fadeIn = true;
+    this.persist();
+    this.scrollToTop();
   }
 
   private async transitionRoute(path: string, step: number, submitted: boolean): Promise<void> {
