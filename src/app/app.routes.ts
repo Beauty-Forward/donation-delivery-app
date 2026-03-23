@@ -1,20 +1,13 @@
 import { Routes } from '@angular/router';
-import {
-  dropoffConfirmationGuard,
-  dropoffDraftGuard,
-  pickupConfirmationGuard,
-  pickupDraftGuard,
-  shippingConfirmationGuard,
-  shippingDraftGuard
-} from './core/guards/flow.guard';
 
 export const routes: Routes = [
   {
     path: '',
     loadComponent: () =>
-      import('./features/method-selection/method-selection-page.component').then(
-        (m) => m.MethodSelectionPageComponent
-      )
+      import('./features/wizard/donation-wizard-page.component').then(
+        (m) => m.DonationWizardPageComponent
+      ),
+    data: { mode: 'home' }
   },
   {
     path: 'pickup',
@@ -22,25 +15,26 @@ export const routes: Routes = [
       {
         path: '',
         loadComponent: () =>
-          import('./features/pickup/pickup-details-page.component').then(
-            (m) => m.PickupDetailsPageComponent
-          )
+          import('./features/wizard/donation-wizard-page.component').then(
+            (m) => m.DonationWizardPageComponent
+          ),
+        data: { mode: 'pickup' }
       },
       {
         path: 'review',
-        canActivate: [pickupDraftGuard],
         loadComponent: () =>
-          import('./features/pickup/pickup-review-page.component').then(
-            (m) => m.PickupReviewPageComponent
-          )
+          import('./features/wizard/donation-wizard-page.component').then(
+            (m) => m.DonationWizardPageComponent
+          ),
+        data: { mode: 'pickup-review' }
       },
       {
         path: 'confirmation',
-        canActivate: [pickupConfirmationGuard],
         loadComponent: () =>
-          import('./features/pickup/pickup-confirmation-page.component').then(
-            (m) => m.PickupConfirmationPageComponent
-          )
+          import('./features/wizard/donation-wizard-page.component').then(
+            (m) => m.DonationWizardPageComponent
+          ),
+        data: { mode: 'pickup-confirmation' }
       }
     ]
   },
@@ -50,25 +44,26 @@ export const routes: Routes = [
       {
         path: '',
         loadComponent: () =>
-          import('./features/shipping/shipping-details-page.component').then(
-            (m) => m.ShippingDetailsPageComponent
-          )
+          import('./features/wizard/donation-wizard-page.component').then(
+            (m) => m.DonationWizardPageComponent
+          ),
+        data: { mode: 'shipping' }
       },
       {
         path: 'review',
-        canActivate: [shippingDraftGuard],
         loadComponent: () =>
-          import('./features/shipping/shipping-review-page.component').then(
-            (m) => m.ShippingReviewPageComponent
-          )
+          import('./features/wizard/donation-wizard-page.component').then(
+            (m) => m.DonationWizardPageComponent
+          ),
+        data: { mode: 'shipping-review' }
       },
       {
         path: 'confirmation',
-        canActivate: [shippingConfirmationGuard],
         loadComponent: () =>
-          import('./features/shipping/shipping-confirmation-page.component').then(
-            (m) => m.ShippingConfirmationPageComponent
-          )
+          import('./features/wizard/donation-wizard-page.component').then(
+            (m) => m.DonationWizardPageComponent
+          ),
+        data: { mode: 'shipping-confirmation' }
       }
     ]
   },
@@ -78,25 +73,26 @@ export const routes: Routes = [
       {
         path: '',
         loadComponent: () =>
-          import('./features/dropoff/dropoff-details-page.component').then(
-            (m) => m.DropoffDetailsPageComponent
-          )
+          import('./features/wizard/donation-wizard-page.component').then(
+            (m) => m.DonationWizardPageComponent
+          ),
+        data: { mode: 'dropoff' }
       },
       {
         path: 'review',
-        canActivate: [dropoffDraftGuard],
         loadComponent: () =>
-          import('./features/dropoff/dropoff-review-page.component').then(
-            (m) => m.DropoffReviewPageComponent
-          )
+          import('./features/wizard/donation-wizard-page.component').then(
+            (m) => m.DonationWizardPageComponent
+          ),
+        data: { mode: 'dropoff-review' }
       },
       {
         path: 'confirmation',
-        canActivate: [dropoffConfirmationGuard],
         loadComponent: () =>
-          import('./features/dropoff/dropoff-confirmation-page.component').then(
-            (m) => m.DropoffConfirmationPageComponent
-          )
+          import('./features/wizard/donation-wizard-page.component').then(
+            (m) => m.DonationWizardPageComponent
+          ),
+        data: { mode: 'dropoff-confirmation' }
       }
     ]
   },

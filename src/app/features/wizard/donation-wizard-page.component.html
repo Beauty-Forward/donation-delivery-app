@@ -1,0 +1,538 @@
+<div class="wizard-page">
+  <div class="wizard-card">
+    <header class="wizard-header">
+      <span class="brand-light">beauty</span>
+      <span class="brand-bold">forward</span>
+    </header>
+
+    @if (step > 0 && !submitted) {
+      <div class="progress-row" [style.gridTemplateColumns]="'repeat(' + totalSteps + ', minmax(0, 1fr))'">
+        @for (index of progressSegments; track index) {
+          <span class="progress-segment" [class.active]="index <= displayStep"></span>
+        }
+      </div>
+    }
+
+    <div #containerRef class="wizard-body" [class.is-fading]="!fadeIn">
+      @switch (step) {
+        @case (0) {
+          <section class="pane pane-welcome">
+            <div class="icon-circle">❤</div>
+            <h1>Schedule a<br />Donation Pickup</h1>
+            <p class="pane-subtitle">
+              Have beauty and hygiene products you would like to pass along? We will help get them to
+              communities in need.
+            </p>
+
+            <div class="stack-list">
+              @for (item of welcomeSteps; track item; let index = $index) {
+                <div class="stack-row">
+                  <div class="stack-icon">•</div>
+                  <div class="stack-content">
+                    <span class="stack-index">{{ index + 1 < 10 ? '0' + (index + 1) : index + 1 }}</span>
+                    <span>{{ item }}</span>
+                  </div>
+                </div>
+              }
+            </div>
+
+            <button class="btn btn-primary btn-block" type="button" (click)="startDonation()">
+              Get Started →
+            </button>
+            <p class="pane-note">Available in all five NYC boroughs</p>
+          </section>
+        }
+
+        @case (1) {
+          <section class="pane">
+            <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
+            <h2>What can you donate?</h2>
+            <p class="pane-subtitle">We accept new and unopened beauty and hygiene products.</p>
+
+            <div class="check-list">
+              @for (item of eligibleItems; track item) {
+                <div class="check-row">
+                  <span class="check-mark">✓</span>
+                  <span>{{ item }}</span>
+                </div>
+              }
+            </div>
+
+            <div class="notice-card">
+              <strong>Not accepted</strong>
+              <p>
+                Opened, used, or expired products. Prescription items. Aerosol cans. Products without
+                labels.
+              </p>
+            </div>
+
+            <button class="consent-card" type="button" [class.checked]="consent" (click)="toggleConsent()">
+              <span class="checkbox">{{ consent ? '✓' : '' }}</span>
+              <span>
+                I confirm that all items are new, sealed, or gently used and in good condition. I
+                understand these products will be distributed to underserved communities.
+              </span>
+            </button>
+
+            <div class="wizard-nav">
+              <button type="button" class="btn btn-secondary" (click)="backTo(0)">← Back</button>
+              <button type="button" class="btn btn-primary" [disabled]="!consent" (click)="continueFromGuidelines()">
+                Continue →
+              </button>
+            </div>
+          </section>
+        }
+
+        @case (2) {
+          <section class="pane">
+            <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
+            <h2>How would you like to donate?</h2>
+            <p class="pane-subtitle">Choose the option that works best for you.</p>
+
+            <div class="method-grid">
+              @for (option of methodOptions; track option.id) {
+                <button
+                  class="method-option"
+                  type="button"
+                  [class.selected]="deliveryMethod === option.id"
+                  (click)="setMethod(option.id)"
+                >
+                  <div class="method-title-row">
+                    <strong>{{ option.title }}</strong>
+                    @if (option.tag) {
+                      <span class="method-tag">{{ option.tag }}</span>
+                    }
+                  </div>
+                  <p>{{ option.description }}</p>
+                </button>
+              }
+            </div>
+
+            <div class="wizard-nav">
+              <button type="button" class="btn btn-secondary" (click)="backTo(1)">← Back</button>
+              <button
+                type="button"
+                class="btn btn-primary"
+                [disabled]="!deliveryMethod"
+                (click)="continueFromMethod()"
+              >
+                Continue →
+              </button>
+            </div>
+          </section>
+        }
+
+        @case (3) {
+          <section class="pane">
+            <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
+            <h2>Your details</h2>
+            <p class="pane-subtitle">We will use this to coordinate and send a confirmation.</p>
+
+            <div class="field-grid two-up">
+              <div class="field">
+                <label for="firstName">First Name</label>
+                <input
+                  id="firstName"
+                  type="text"
+                  [ngModel]="form.firstName"
+                  (ngModelChange)="updateField('firstName', $event)"
+                  placeholder="Jane"
+                  [class.invalid]="!!errors['firstName']"
+                />
+                @if (errors['firstName']) {
+                  <p class="field-error">{{ errors['firstName'] }}</p>
+                }
+              </div>
+
+              <div class="field">
+                <label for="lastName">Last Name</label>
+                <input
+                  id="lastName"
+                  type="text"
+                  [ngModel]="form.lastName"
+                  (ngModelChange)="updateField('lastName', $event)"
+                  placeholder="Doe"
+                  [class.invalid]="!!errors['lastName']"
+                />
+                @if (errors['lastName']) {
+                  <p class="field-error">{{ errors['lastName'] }}</p>
+                }
+              </div>
+
+              <div class="field">
+                <label for="email">Email</label>
+                <input
+                  id="email"
+                  type="email"
+                  [ngModel]="form.email"
+                  (ngModelChange)="updateField('email', $event)"
+                  placeholder="jane@example.com"
+                  [class.invalid]="!!errors['email']"
+                />
+                @if (errors['email']) {
+                  <p class="field-error">{{ errors['email'] }}</p>
+                }
+              </div>
+
+              <div class="field">
+                <label for="phone">Phone</label>
+                <input
+                  id="phone"
+                  type="tel"
+                  [ngModel]="form.phone"
+                  (ngModelChange)="updateField('phone', $event)"
+                  placeholder="(212) 555-0100"
+                  [class.invalid]="!!errors['phone']"
+                />
+                @if (errors['phone']) {
+                  <p class="field-error">{{ errors['phone'] }}</p>
+                }
+              </div>
+            </div>
+
+            <p class="section-eyebrow">Package Size</p>
+            <div class="package-grid">
+              @for (size of packageSizes; track size.id) {
+                <button
+                  type="button"
+                  class="package-option"
+                  [class.selected]="form.packageSize === size.id"
+                  (click)="setPackageSize(size.id)"
+                >
+                  <strong>{{ size.label }}</strong>
+                  <span>{{ size.description }}</span>
+                </button>
+              }
+            </div>
+            @if (errors['packageSize']) {
+              <p class="field-error spacing-top">{{ errors['packageSize'] }}</p>
+            }
+
+            @if (deliveryMethod === 'courier') {
+              <p class="section-eyebrow spacing-top-lg">Pickup Address</p>
+
+              <div class="field-grid">
+                <div class="field">
+                  <label for="addressLine1">Street Address</label>
+                  <input
+                    id="addressLine1"
+                    type="text"
+                    [ngModel]="form.addressLine1"
+                    (ngModelChange)="updateField('addressLine1', $event)"
+                    placeholder="123 Main Street"
+                    [class.invalid]="!!errors['addressLine1']"
+                  />
+                  @if (errors['addressLine1']) {
+                    <p class="field-error">{{ errors['addressLine1'] }}</p>
+                  }
+                </div>
+
+                <div class="field">
+                  <label for="addressLine2">Apt / Suite</label>
+                  <input
+                    id="addressLine2"
+                    type="text"
+                    [ngModel]="form.addressLine2"
+                    (ngModelChange)="updateField('addressLine2', $event)"
+                    placeholder="Apt 4B"
+                  />
+                </div>
+
+                <div class="field-grid two-up">
+                  <div class="field">
+                    <label for="borough">Borough</label>
+                    <select
+                      id="borough"
+                      [ngModel]="form.borough"
+                      (ngModelChange)="updateField('borough', $event)"
+                      [class.invalid]="!!errors['borough']"
+                    >
+                      <option value="">Select</option>
+                      @for (borough of boroughs; track borough) {
+                        <option [value]="borough">{{ borough }}</option>
+                      }
+                    </select>
+                    @if (errors['borough']) {
+                      <p class="field-error">{{ errors['borough'] }}</p>
+                    }
+                  </div>
+
+                  <div class="field">
+                    <label for="zip">ZIP Code</label>
+                    <input
+                      id="zip"
+                      type="text"
+                      [ngModel]="form.zip"
+                      (ngModelChange)="updateField('zip', $event)"
+                      placeholder="10001"
+                      [class.invalid]="!!errors['zip']"
+                    />
+                    @if (errors['zip']) {
+                      <p class="field-error">{{ errors['zip'] }}</p>
+                    }
+                  </div>
+                </div>
+              </div>
+            }
+
+            <div class="wizard-nav">
+              <button type="button" class="btn btn-secondary" (click)="backTo(2)">← Back</button>
+              <button type="button" class="btn btn-primary" (click)="continueFromDetails()">Continue →</button>
+            </div>
+          </section>
+        }
+
+        @case (4) {
+          <section class="pane">
+            <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
+            <h2>Support our mission</h2>
+            <p class="pane-subtitle">
+              A <strong>$25 donation</strong> covers the full cost of your courier pickup. Any amount from
+              $5 helps us keep going.
+            </p>
+
+            <div class="donation-preset-grid">
+              @for (amount of donationPresets; track amount) {
+                <button
+                  type="button"
+                  class="donation-preset"
+                  [class.selected]="donationAmount === amount && !customAmount"
+                  (click)="setDonationPreset(amount)"
+                >
+                  <strong>${{ amount }}</strong>
+                  @if (amount === 25) {
+                    <span class="method-tag">Recommended</span>
+                  }
+                </button>
+              }
+            </div>
+
+            <div class="field spacing-top">
+              <label for="customAmount">Custom Amount</label>
+              <input
+                id="customAmount"
+                type="number"
+                min="5"
+                [ngModel]="customAmount"
+                (ngModelChange)="setCustomAmount($event)"
+                placeholder="Custom amount"
+                [class.invalid]="!!errors['donation']"
+              />
+              @if (errors['donation']) {
+                <p class="field-error">{{ errors['donation'] }}</p>
+              }
+            </div>
+
+            <div class="notice-card spacing-top">
+              <strong>Tax-deductible</strong>
+              <p>Beauty Forward is a 501(c)(3). Receipt sent via email.</p>
+            </div>
+
+            <div class="wizard-nav">
+              <button type="button" class="btn btn-secondary" (click)="backTo(3)">← Back</button>
+              <button type="button" class="btn btn-primary" (click)="continueFromDonation()">
+                Donate ${{ finalDonationAmount }} →
+              </button>
+            </div>
+          </section>
+        }
+
+        @case (5) {
+          <section class="pane">
+            <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
+            <h2>Schedule your pickup</h2>
+            <p class="pane-subtitle">Choose a date and exact time.</p>
+
+            <div class="roadie-card">
+              <span class="roadie-pill">Roadie</span>
+              <p>A verified Roadie driver will arrive at the exact time you select.</p>
+            </div>
+
+            <p class="section-eyebrow">Date</p>
+            <div class="date-grid">
+              @for (day of pickupDateOptions; track day.iso) {
+                <button
+                  type="button"
+                  class="date-option"
+                  [class.selected]="selectedDate === day.iso"
+                  (click)="selectDate(day.iso)"
+                >
+                  <span>{{ day.day }}</span>
+                  <strong>{{ day.date }}</strong>
+                  <span>{{ day.month }}</span>
+                </button>
+              }
+            </div>
+            @if (errors['date']) {
+              <p class="field-error spacing-top">{{ errors['date'] }}</p>
+            }
+
+            <p class="section-eyebrow spacing-top-lg">Pickup Time</p>
+            <div class="time-grid">
+              @for (time of pickupTimes; track time) {
+                <button
+                  type="button"
+                  class="time-option"
+                  [class.selected]="selectedTime === time"
+                  (click)="selectTime(time)"
+                >
+                  {{ time }}
+                </button>
+              }
+            </div>
+            @if (errors['time']) {
+              <p class="field-error spacing-top">{{ errors['time'] }}</p>
+            }
+
+            <div class="notice-card spacing-top">
+              <p>Please have your package ready at the door at the selected time.</p>
+            </div>
+
+            <div class="wizard-nav">
+              <button type="button" class="btn btn-secondary" (click)="backTo(4)">← Back</button>
+              <button type="button" class="btn btn-primary" (click)="continueFromSchedule()">Review →</button>
+            </div>
+          </section>
+        }
+
+        @case (6) {
+          @if (submitted) {
+            <section class="pane pane-submitted">
+              <div class="success-icon">✓</div>
+              <h2>You are all set</h2>
+              <p class="pane-subtitle">
+                Confirmation sent to <strong>{{ form.email }}</strong>.
+                @if (deliveryMethod === 'courier') {
+                  Your Roadie driver will arrive on <strong>{{ pickupDateLabel }}</strong> at
+                  <strong>{{ selectedTime }}</strong>.
+                }
+                @if (deliveryMethod === 'dropoff') {
+                  Visit our warehouse at your convenience during business hours.
+                }
+                @if (deliveryMethod === 'ship') {
+                  Ship your package to our warehouse address below.
+                }
+              </p>
+
+              <div class="summary-card compact">
+                @for (row of confirmationRows; track row.label + row.value) {
+                  <div class="summary-item row">
+                    <span class="summary-label">{{ row.label }}</span>
+                    <span class="summary-line">{{ row.value }}</span>
+                  </div>
+                }
+              </div>
+
+              @if (deliveryMethod === 'courier') {
+                <div class="roadie-inline">Tracking link sent to your email</div>
+              }
+
+              <button type="button" class="btn btn-primary" (click)="restartFromHome()">
+                Start Another Donation
+              </button>
+            </section>
+          } @else {
+            <section class="pane">
+              <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
+              <h2>Review and confirm</h2>
+              <p class="pane-subtitle">Make sure everything looks right.</p>
+
+              <div class="summary-card">
+                @for (section of reviewSections; track section.label) {
+                  <div class="summary-item">
+                    <span class="summary-label">{{ section.label }}</span>
+                    @for (line of section.lines; track line) {
+                      <span class="summary-line">{{ line }}</span>
+                    }
+                  </div>
+                }
+              </div>
+
+              @if (deliveryMethod === 'courier') {
+                <div class="roadie-inline">Courier pickup powered by Roadie</div>
+              }
+
+              <div class="wizard-nav">
+                <button type="button" class="btn btn-secondary" (click)="backFromReview()">← Back</button>
+                <button type="button" class="btn btn-primary" (click)="confirmDonation()">Confirm →</button>
+              </div>
+            </section>
+          }
+        }
+
+        @case (7) {
+          <section class="pane">
+            <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
+            <h2>Drop off your donation</h2>
+            <p class="pane-subtitle">Bring your package to our Brooklyn warehouse.</p>
+
+            <div class="summary-card">
+              <div class="summary-item">
+                <span class="summary-label">Warehouse</span>
+                <span class="summary-line">{{ warehouse.name }}</span>
+                <span class="summary-line">{{ warehouse.address }}, {{ warehouse.area }}</span>
+                <span class="summary-line">{{ warehouse.hours }}</span>
+                <span class="summary-line">{{ warehouse.zip }}</span>
+              </div>
+            </div>
+
+            <p class="section-eyebrow spacing-top">When you arrive</p>
+            <div class="instruction-list">
+              @for (entry of dropoffArrivalSteps; track entry.number) {
+                <div class="instruction-row">
+                  <span class="instruction-number">{{ entry.number }}</span>
+                  <span>{{ entry.text }}</span>
+                </div>
+              }
+            </div>
+
+            <div class="notice-card spacing-top">
+              <p>No appointment needed. Just walk in during business hours.</p>
+            </div>
+
+            <div class="wizard-nav">
+              <button type="button" class="btn btn-secondary" (click)="backTo(3)">← Back</button>
+              <button type="button" class="btn btn-primary" (click)="continueFromDropoffInfo()">Review →</button>
+            </div>
+          </section>
+        }
+
+        @case (8) {
+          <section class="pane">
+            <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
+            <h2>Ship your donation</h2>
+            <p class="pane-subtitle">Mail your package to us using any carrier you prefer.</p>
+
+            <div class="summary-card">
+              <div class="summary-item">
+                <span class="summary-label">Ship to</span>
+                <span class="summary-line">{{ warehouse.name }}</span>
+                <span class="summary-line">{{ warehouse.address }}</span>
+                <span class="summary-line">{{ warehouse.area }}, {{ warehouse.zip }}</span>
+              </div>
+            </div>
+
+            <p class="section-eyebrow spacing-top">How it works</p>
+            <div class="instruction-list">
+              @for (entry of shippingHowItWorksSteps; track entry.number) {
+                <div class="instruction-row">
+                  <span class="instruction-number">{{ entry.number }}</span>
+                  <span>{{ entry.text }}</span>
+                </div>
+              }
+            </div>
+
+            <div class="notice-card spacing-top">
+              <p>Shipping costs are at your own expense. Any carrier is fine.</p>
+            </div>
+
+            <div class="wizard-nav">
+              <button type="button" class="btn btn-secondary" (click)="backTo(3)">← Back</button>
+              <button type="button" class="btn btn-primary" (click)="continueFromShippingInfo()">Review →</button>
+            </div>
+          </section>
+        }
+      }
+    </div>
+  </div>
+</div>
