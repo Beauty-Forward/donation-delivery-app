@@ -15,6 +15,7 @@
 
 .wizard-page {
   min-height: 100vh;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -633,5 +634,28 @@
 
   .time-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 64rem) {
+  .wizard-page {
+    padding: 2rem;
+  }
+
+  .wizard-card {
+    max-width: 44rem;
+  }
+
+  .wizard-header {
+    padding: 2rem 2.5rem 1.35rem;
+  }
+
+  .progress-row {
+    padding: 0 2.5rem;
+  }
+
+  .wizard-body {
+    max-height: 78vh;
+    padding: 1rem 2.5rem 2.5rem;
   }
 }
