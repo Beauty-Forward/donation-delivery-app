@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Angular Dev Server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start"],
+      "port": 4200
+    },
+    {
+      "name": "Firebase Emulators (Functions + Firestore)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "functions", "run", "serve"],
+      "port": 5001
+    }
+  ]
+}
