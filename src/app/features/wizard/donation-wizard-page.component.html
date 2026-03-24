@@ -6,7 +6,10 @@
     </header>
 
     @if (step > 0 && !submitted) {
-      <div class="progress-row" [style.gridTemplateColumns]="'repeat(' + totalSteps + ', minmax(0, 1fr))'">
+      <div
+        class="progress-row"
+        [style.gridTemplateColumns]="'repeat(' + totalSteps + ', minmax(0, 1fr))'"
+      >
         @for (index of progressSegments; track index) {
           <span class="progress-segment" [class.active]="index <= displayStep"></span>
         }
@@ -20,16 +23,17 @@
             <div class="icon-circle">❤</div>
             <h1>Schedule a<br />Donation Pickup</h1>
             <p class="pane-subtitle">
-              Have beauty and hygiene products you would like to pass along? We will help get them to
-              communities in need.
+              Have beauty and hygiene products you would like to pass along? We will help get them
+              to communities in need.
             </p>
 
             <div class="stack-list">
               @for (item of welcomeSteps; track item; let index = $index) {
                 <div class="stack-row">
-                  <div class="stack-icon">•</div>
                   <div class="stack-content">
-                    <span class="stack-index">{{ index + 1 < 10 ? '0' + (index + 1) : index + 1 }}</span>
+                    <span class="stack-index">{{
+                      index + 1 < 10 ? '0' + (index + 1) : index + 1
+                    }}</span>
                     <span>{{ item }}</span>
                   </div>
                 </div>
@@ -61,12 +65,17 @@
             <div class="notice-card">
               <strong>Not accepted</strong>
               <p>
-                Opened, used, or expired products. Prescription items. Aerosol cans. Products without
-                labels.
+                Opened, used, or expired products. Prescription items. Aerosol cans. Products
+                without labels.
               </p>
             </div>
 
-            <button class="consent-card" type="button" [class.checked]="consent" (click)="toggleConsent()">
+            <button
+              class="consent-card"
+              type="button"
+              [class.checked]="consent"
+              (click)="toggleConsent()"
+            >
               <span class="checkbox">{{ consent ? '✓' : '' }}</span>
               <span>
                 I confirm that all items are new, sealed, or gently used and in good condition. I
@@ -76,7 +85,12 @@
 
             <div class="wizard-nav">
               <button type="button" class="btn btn-secondary" (click)="backTo(0)">← Back</button>
-              <button type="button" class="btn btn-primary" [disabled]="!consent" (click)="continueFromGuidelines()">
+              <button
+                type="button"
+                class="btn btn-primary"
+                [disabled]="!consent"
+                (click)="continueFromGuidelines()"
+              >
                 Continue →
               </button>
             </div>
@@ -277,7 +291,9 @@
 
             <div class="wizard-nav">
               <button type="button" class="btn btn-secondary" (click)="backTo(2)">← Back</button>
-              <button type="button" class="btn btn-primary" (click)="continueFromDetails()">Continue →</button>
+              <button type="button" class="btn btn-primary" (click)="continueFromDetails()">
+                Continue →
+              </button>
             </div>
           </section>
         }
@@ -287,8 +303,8 @@
             <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
             <h2>Support our mission</h2>
             <p class="pane-subtitle">
-              A <strong>$25 donation</strong> covers the full cost of your courier pickup. Any amount from
-              $5 helps us keep going.
+              A <strong>$25 donation</strong> covers the full cost of your courier pickup. Any
+              amount from $5 helps us keep going.
             </p>
 
             <div class="donation-preset-grid">
@@ -390,7 +406,9 @@
 
             <div class="wizard-nav">
               <button type="button" class="btn btn-secondary" (click)="backTo(4)">← Back</button>
-              <button type="button" class="btn btn-primary" (click)="continueFromSchedule()">Review →</button>
+              <button type="button" class="btn btn-primary" (click)="continueFromSchedule()">
+                Review →
+              </button>
             </div>
           </section>
         }
@@ -401,10 +419,12 @@
               <div class="success-icon">✓</div>
               <h2>You are all set</h2>
               <p class="pane-subtitle">
-                Confirmation sent to <strong>{{ form.email }}</strong>.
+                Confirmation sent to <strong>{{ form.email }}</strong
+                >.
                 @if (deliveryMethod === 'courier') {
                   Your Roadie driver will arrive on <strong>{{ pickupDateLabel }}</strong> at
-                  <strong>{{ selectedTime }}</strong>.
+                  <strong>{{ selectedTime }}</strong
+                  >.
                 }
                 @if (deliveryMethod === 'dropoff') {
                   Visit our warehouse at your convenience during business hours.
@@ -453,8 +473,12 @@
               }
 
               <div class="wizard-nav">
-                <button type="button" class="btn btn-secondary" (click)="backFromReview()">← Back</button>
-                <button type="button" class="btn btn-primary" (click)="confirmDonation()">Confirm →</button>
+                <button type="button" class="btn btn-secondary" (click)="backFromReview()">
+                  ← Back
+                </button>
+                <button type="button" class="btn btn-primary" (click)="confirmDonation()">
+                  Confirm →
+                </button>
               </div>
             </section>
           }
@@ -492,7 +516,9 @@
 
             <div class="wizard-nav">
               <button type="button" class="btn btn-secondary" (click)="backTo(3)">← Back</button>
-              <button type="button" class="btn btn-primary" (click)="continueFromDropoffInfo()">Review →</button>
+              <button type="button" class="btn btn-primary" (click)="continueFromDropoffInfo()">
+                Review →
+              </button>
             </div>
           </section>
         }
@@ -528,7 +554,9 @@
 
             <div class="wizard-nav">
               <button type="button" class="btn btn-secondary" (click)="backTo(3)">← Back</button>
-              <button type="button" class="btn btn-primary" (click)="continueFromShippingInfo()">Review →</button>
+              <button type="button" class="btn btn-primary" (click)="continueFromShippingInfo()">
+                Review →
+              </button>
             </div>
           </section>
         }

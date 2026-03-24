@@ -1,11 +1,5 @@
 import { CommonModule } from '@angular/common';
-import {
-  Component,
-  DestroyRef,
-  ElementRef,
-  ViewChild,
-  inject
-} from '@angular/core';
+import { Component, DestroyRef, ElementRef, ViewChild, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -15,7 +9,7 @@ import {
   DeliveryMethod,
   DonationWizardState,
   DonationWizardStateService,
-  WizardFormState
+  WizardFormState,
 } from '../../core/services/donation-wizard-state.service';
 
 type RouteMode =
@@ -69,7 +63,7 @@ interface ConfirmationRow {
   selector: 'app-donation-wizard-page',
   imports: [CommonModule, FormsModule],
   templateUrl: './donation-wizard-page.component.html',
-  styleUrl: './donation-wizard-page.component.scss'
+  styleUrl: './donation-wizard-page.component.scss',
 })
 export class DonationWizardPageComponent {
   @ViewChild('containerRef') private containerRef?: ElementRef<HTMLDivElement>;
@@ -81,53 +75,61 @@ export class DonationWizardPageComponent {
   protected readonly boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'The Bronx', 'Staten Island'];
   protected readonly packageSizes: PackageOption[] = [
     { id: 'small', label: 'Small', description: 'Fits in a shoebox' },
-    { id: 'medium', label: 'Medium', description: 'Fits in a grocery bag' },
-    { id: 'large', label: 'Large', description: 'Fits in a moving box' }
+    { id: 'medium', label: 'Medium', description: 'Fits in the front seat of a car' },
+    { id: 'large', label: 'Large', description: 'Fits in the back seat of a car' },
   ];
   protected readonly donationPresets = [5, 15, 25, 50];
-  protected readonly pickupTimes = ['9:00 AM', '10:30 AM', '12:00 PM', '1:30 PM', '3:00 PM', '4:30 PM'];
+  protected readonly pickupTimes = [
+    '9:00 AM',
+    '10:30 AM',
+    '12:00 PM',
+    '1:30 PM',
+    '3:00 PM',
+    '4:30 PM',
+  ];
   protected readonly eligibleItems = [
     'Unopened skincare products',
     'Sealed hair care products',
     'New or gently used beauty tools',
     'Unopened makeup & cosmetics',
     'Sealed hygiene essentials',
-    'New nail care products'
+    'New nail care products',
   ];
   protected readonly welcomeSteps = [
     'Tell us what you are donating',
     'Choose how to get it to us',
-    'Products reach communities in need'
+    'Products reach communities in need',
   ];
   protected readonly methodOptions: MethodOption[] = [
     {
       id: 'courier',
       title: 'Courier Pickup',
-      description: 'We send a Roadie driver to collect from your door. A small donation covers the cost.',
-      tag: 'Most popular'
+      description:
+        'We send a Roadie driver to collect from your door. A small donation covers the cost.',
+      tag: 'Most popular',
     },
     {
       id: 'dropoff',
       title: 'Drop Off',
-      description: 'Bring your donation to our Brooklyn warehouse during business hours. Free.'
+      description: 'Bring your donation to our Brooklyn warehouse during business hours. Free.',
     },
     {
       id: 'ship',
       title: 'Ship to Us',
-      description: 'Mail your package to our warehouse at your own cost using any carrier.'
-    }
+      description: 'Mail your package to our warehouse at your own cost using any carrier.',
+    },
   ];
   protected readonly dropoffArrivalSteps: StepLineItem[] = [
     { number: '01', text: 'Head to the drop-off desk inside the warehouse entrance' },
     { number: '02', text: "You'll be given a QR code label to attach to your package" },
     { number: '03', text: 'Scan the QR code at the desk and fill in your details' },
-    { number: '04', text: "Leave your package with our team - that's it!" }
+    { number: '04', text: "Leave your package with our team - that's it!" },
   ];
   protected readonly shippingHowItWorksSteps: StepLineItem[] = [
     { number: '01', text: 'Pack your beauty products securely in a box or padded mailer' },
     { number: '02', text: 'Ship via USPS, UPS, FedEx, or any carrier of your choice' },
     { number: '03', text: 'Include your name and email inside the package for your receipt' },
-    { number: '04', text: "We'll email you a confirmation once we receive your package" }
+    { number: '04', text: "We'll email you a confirmation once we receive your package" },
   ];
 
   protected readonly warehouse = {
@@ -135,7 +137,7 @@ export class DonationWizardPageComponent {
     address: '247 Bedford Ave',
     area: 'Williamsburg, Brooklyn',
     zip: 'NY 11211',
-    hours: 'Mon-Fri, 9 AM - 5 PM'
+    hours: 'Mon-Fri, 9 AM - 5 PM',
   };
 
   protected readonly pickupDateOptions = this.buildPickupDateOptions();
@@ -161,7 +163,7 @@ export class DonationWizardPageComponent {
       .pipe(
         filter((event): event is NavigationEnd => event instanceof NavigationEnd),
         startWith(new NavigationEnd(0, this.router.url, this.router.url)),
-        takeUntilDestroyed(this.destroyRef)
+        takeUntilDestroyed(this.destroyRef),
       )
       .subscribe(() => {
         const mode = this.resolveModeFromUrl(this.router.url);
@@ -218,7 +220,7 @@ export class DonationWizardPageComponent {
     return new Date(`${this.selectedDate}T12:00:00`).toLocaleDateString('en-US', {
       weekday: 'long',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
     });
   }
 
@@ -239,17 +241,17 @@ export class DonationWizardPageComponent {
         lines: [
           `${this.form.firstName} ${this.form.lastName}`.trim(),
           this.form.email,
-          this.form.phone
-        ].filter(Boolean)
+          this.form.phone,
+        ].filter(Boolean),
       },
       {
         label: 'Package',
-        lines: [this.selectedPackageLabel || 'Not selected']
+        lines: [this.selectedPackageLabel || 'Not selected'],
       },
       {
         label: 'Method',
-        lines: [this.methodLabel]
-      }
+        lines: [this.methodLabel],
+      },
     ];
 
     if (this.deliveryMethod === 'courier') {
@@ -258,17 +260,17 @@ export class DonationWizardPageComponent {
           label: 'Pickup',
           lines: [
             `${this.form.addressLine1}${this.form.addressLine2 ? `, ${this.form.addressLine2}` : ''}`,
-            `${this.form.borough}, NY ${this.form.zip}`
-          ]
+            `${this.form.borough}, NY ${this.form.zip}`,
+          ],
         },
         {
           label: 'Schedule',
-          lines: [`${this.pickupDateLabel} at ${this.selectedTime}`]
+          lines: [`${this.pickupDateLabel} at ${this.selectedTime}`],
         },
         {
           label: 'Donation',
-          lines: [`$${this.finalDonationAmount}`]
-        }
+          lines: [`$${this.finalDonationAmount}`],
+        },
       );
     }
 
@@ -278,8 +280,8 @@ export class DonationWizardPageComponent {
         lines: [
           this.warehouse.address,
           `${this.warehouse.area}, ${this.warehouse.zip}`,
-          this.warehouse.hours
-        ]
+          this.warehouse.hours,
+        ],
       });
     }
 
@@ -289,8 +291,8 @@ export class DonationWizardPageComponent {
         lines: [
           this.warehouse.name,
           this.warehouse.address,
-          `${this.warehouse.area}, ${this.warehouse.zip}`
-        ]
+          `${this.warehouse.area}, ${this.warehouse.zip}`,
+        ],
       });
     }
 
@@ -301,46 +303,46 @@ export class DonationWizardPageComponent {
     const rows: ConfirmationRow[] = [
       {
         label: 'Contact',
-        value: `${this.form.firstName} ${this.form.lastName}`.trim()
+        value: `${this.form.firstName} ${this.form.lastName}`.trim(),
       },
       {
         label: 'Package',
-        value: this.selectedPackageLabel || 'Not selected'
+        value: this.selectedPackageLabel || 'Not selected',
       },
       {
         label: 'Method',
-        value: this.methodLabel
-      }
+        value: this.methodLabel,
+      },
     ];
 
     if (this.deliveryMethod === 'courier') {
       rows.push(
         {
           label: 'When',
-          value: `${this.pickupDateLabel}, ${this.selectedTime}`
+          value: `${this.pickupDateLabel}, ${this.selectedTime}`,
         },
         {
           label: 'Address',
-          value: `${this.form.addressLine1}, ${this.form.borough}`
+          value: `${this.form.addressLine1}, ${this.form.borough}`,
         },
         {
           label: 'Donation',
-          value: `$${this.finalDonationAmount}`
-        }
+          value: `$${this.finalDonationAmount}`,
+        },
       );
     }
 
     if (this.deliveryMethod === 'dropoff') {
       rows.push({
         label: 'Warehouse',
-        value: `${this.warehouse.address}, ${this.warehouse.area}`
+        value: `${this.warehouse.address}, ${this.warehouse.area}`,
       });
     }
 
     if (this.deliveryMethod === 'ship') {
       rows.push({
         label: 'Ship to',
-        value: `${this.warehouse.address}, ${this.warehouse.area}, ${this.warehouse.zip}`
+        value: `${this.warehouse.address}, ${this.warehouse.area}, ${this.warehouse.zip}`,
       });
     }
 
@@ -350,7 +352,7 @@ export class DonationWizardPageComponent {
   protected updateField(field: keyof WizardFormState, value: string): void {
     this.form = {
       ...this.form,
-      [field]: value
+      [field]: value,
     };
 
     this.clearError(field);
@@ -711,7 +713,7 @@ export class DonationWizardPageComponent {
       customAmount: this.customAmount,
       selectedDate: this.selectedDate,
       selectedTime: this.selectedTime,
-      submitted: this.submitted
+      submitted: this.submitted,
     };
   }
 
@@ -746,7 +748,7 @@ export class DonationWizardPageComponent {
         iso: date.toISOString().slice(0, 10),
         day: date.toLocaleDateString('en-US', { weekday: 'short' }),
         month: date.toLocaleDateString('en-US', { month: 'short' }),
-        date: date.getDate()
+        date: date.getDate(),
       });
 
       if (options.length >= 5) {
