@@ -11,6 +11,7 @@ import {
   DonationWizardStateService,
   WizardFormState,
 } from '../../core/services/donation-wizard-state.service';
+import { environment } from '../../../environments/environment';
 
 type RouteMode =
   | 'home'
@@ -133,11 +134,13 @@ export class DonationWizardPageComponent {
   ];
 
   protected readonly warehouse = {
-    name: 'Beauty Forward Warehouse',
-    address: '247 Bedford Ave',
-    area: 'Williamsburg, Brooklyn',
-    zip: 'NY 11211',
-    hours: 'Mon-Fri, 9 AM - 5 PM',
+    name: environment.warehouse.name,
+    line1: environment.warehouse.line1,
+    line2: environment.warehouse.line2,
+    city: environment.warehouse.city,
+    state: environment.warehouse.state,
+    zip: environment.warehouse.postalCode,
+    hours: environment.warehouse.hours,
   };
 
   protected readonly pickupDateOptions = this.buildPickupDateOptions();
@@ -276,10 +279,11 @@ export class DonationWizardPageComponent {
 
     if (this.deliveryMethod === 'dropoff') {
       sections.push({
-        label: 'Warehouse',
+        label: this.warehouse.name,
         lines: [
-          this.warehouse.address,
-          `${this.warehouse.area}, ${this.warehouse.zip}`,
+          this.warehouse.line1,
+          this.warehouse.line2,
+          `${this.warehouse.city}, ${this.warehouse.state} ${this.warehouse.zip}`,
           this.warehouse.hours,
         ],
       });
@@ -290,8 +294,8 @@ export class DonationWizardPageComponent {
         label: 'Ship to',
         lines: [
           this.warehouse.name,
-          this.warehouse.address,
-          `${this.warehouse.area}, ${this.warehouse.zip}`,
+          `${this.warehouse.line1} ${this.warehouse.line2}`,
+          `${this.warehouse.city}, ${this.warehouse.state} ${this.warehouse.zip}`,
         ],
       });
     }
@@ -334,15 +338,15 @@ export class DonationWizardPageComponent {
 
     if (this.deliveryMethod === 'dropoff') {
       rows.push({
-        label: 'Warehouse',
-        value: `${this.warehouse.address}, ${this.warehouse.area}`,
+        label: this.warehouse.name,
+        value: `${this.warehouse.line1} ${this.warehouse.line2} ${this.warehouse.city} ${this.warehouse.state}, ${this.warehouse.zip}`,
       });
     }
 
     if (this.deliveryMethod === 'ship') {
       rows.push({
         label: 'Ship to',
-        value: `${this.warehouse.address}, ${this.warehouse.area}, ${this.warehouse.zip}`,
+        value: `${this.warehouse.line1} ${this.warehouse.line2} ${this.warehouse.city} ${this.warehouse.state}, ${this.warehouse.zip}`,
       });
     }
 

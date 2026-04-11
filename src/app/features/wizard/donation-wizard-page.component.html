@@ -494,9 +494,9 @@
               <div class="summary-item">
                 <span class="summary-label">Warehouse</span>
                 <span class="summary-line">{{ warehouse.name }}</span>
-                <span class="summary-line">{{ warehouse.address }}, {{ warehouse.area }}</span>
+                <span class="summary-line">{{ warehouse.line1 }} {{ warehouse.line2 }} </span>
+                <span> {{ warehouse.city }}, {{ warehouse.state }} {{ warehouse.zip }}</span>
                 <span class="summary-line">{{ warehouse.hours }}</span>
-                <span class="summary-line">{{ warehouse.zip }}</span>
               </div>
             </div>
 
@@ -533,8 +533,8 @@
               <div class="summary-item">
                 <span class="summary-label">Ship to</span>
                 <span class="summary-line">{{ warehouse.name }}</span>
-                <span class="summary-line">{{ warehouse.address }}</span>
-                <span class="summary-line">{{ warehouse.area }}, {{ warehouse.zip }}</span>
+                <span class="summary-line">{{ warehouse.line1 }} {{ warehouse.line2 }} </span>
+                <span> {{ warehouse.city }}, {{ warehouse.state }} {{ warehouse.zip }}</span>
               </div>
             </div>
 
