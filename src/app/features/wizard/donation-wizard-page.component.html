@@ -24,7 +24,7 @@
             <h1>Schedule a<br />Donation Pickup</h1>
             <p class="pane-subtitle">
               Have beauty and hygiene products you would like to pass along? We will help get them
-              to communities in need.
+              to underserved communities.
             </p>
 
             <div class="stack-list">
@@ -65,8 +65,8 @@
             <div class="notice-card">
               <strong>Not accepted</strong>
               <p>
-                Opened, used, or expired products. Prescription items. Aerosol cans. Products
-                without labels.
+                Opened, used, or expired products. Prescription items. Supplements, vitamins,
+                medications, or other ingestibles. Clothing. Products without labels. Damaged items.
               </p>
             </div>
 
@@ -78,8 +78,23 @@
             >
               <span class="checkbox">{{ consent ? '✓' : '' }}</span>
               <span>
-                I confirm that all items are new, sealed, or gently used and in good condition. I
-                understand these products will be distributed to underserved communities.
+                By checking this box, I confirm that all products I am donating are unopened,
+                unexpired, and in their original packaging. I understand that Beauty Forward
+                reserves the right to decline or dispose of products that do not meet these
+                standards.
+              </span>
+            </button>
+            <button
+              class="consent-card"
+              type="button"
+              [class.checked]="consent"
+              (click)="toggleConsent()"
+            >
+              <span class="checkbox">{{ consent ? '✓' : '' }}</span>
+              <span>
+                By checking this box, I release Beauty Forward Inc. and its representatives from any
+                liability once the products are collected. I understand that products will be
+                redistributed to individuals and organizations serving underserved communities.
               </span>
             </button>
 

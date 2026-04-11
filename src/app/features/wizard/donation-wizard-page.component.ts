@@ -91,15 +91,16 @@ export class DonationWizardPageComponent {
   protected readonly eligibleItems = [
     'Unopened skincare products',
     'Sealed hair care products',
-    'New or gently used beauty tools',
+    'New and unopened beauty tools',
     'Unopened makeup & cosmetics',
     'Sealed hygiene essentials',
     'New nail care products',
+    'Unused feminine hygiene products',
   ];
   protected readonly welcomeSteps = [
     'Tell us what you are donating',
     'Choose how to get it to us',
-    'Products reach communities in need',
+    'Products reach underserved communities',
   ];
   protected readonly methodOptions: MethodOption[] = [
     {
