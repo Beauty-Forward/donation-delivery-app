@@ -16,12 +16,13 @@ export const environment = {
   },
   warehouse: {
     name: 'Beauty Forward Warehouse',
-    line1: '555 ForGood Way',
-    line2: 'Suite 100',
-    city: 'New York',
+    line1: '14 53rd St',
+    line2: '#614',
+    city: 'Brooklyn',
     state: 'NY',
-    postalCode: '11238',
-    deliveryNotes: 'Use receiving dock B for donations and ring the donation bell on arrival.',
+    postalCode: '11232',
+    hours: 'Mon-Fri, 9 AM - 5 PM',
+    deliveryNotes: 'TODO: ADD DELIVERY NOTES',
   },
   integrations: {
     givebutter: {
