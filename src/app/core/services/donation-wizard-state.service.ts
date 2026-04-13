@@ -18,7 +18,8 @@ export interface WizardFormState {
 
 export interface DonationWizardState {
   step: number;
-  consent: boolean;
+  consentProducts: boolean;
+  consentLiability: boolean;
   deliveryMethod: DeliveryMethod | null;
   form: WizardFormState;
   donationAmount: number;
@@ -44,7 +45,8 @@ export const DEFAULT_WIZARD_FORM_STATE: WizardFormState = {
 
 export const DEFAULT_DONATION_WIZARD_STATE: DonationWizardState = {
   step: 0,
-  consent: false,
+  consentProducts: false,
+  consentLiability: false,
   deliveryMethod: null,
   form: { ...DEFAULT_WIZARD_FORM_STATE },
   donationAmount: 25,

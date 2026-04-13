@@ -144,7 +144,8 @@ export class DonationWizardPageComponent {
   protected readonly pickupDateOptions = this.buildPickupDateOptions();
 
   protected step = 0;
-  protected consent = false;
+  protected consentProducts = false;
+  protected consentLiability = false;
   protected deliveryMethod: DeliveryMethod | null = null;
   protected form: WizardFormState = { ...DEFAULT_WIZARD_FORM_STATE };
   protected donationAmount = 25;
@@ -375,8 +376,13 @@ export class DonationWizardPageComponent {
     this.persist();
   }
 
-  protected toggleConsent(): void {
-    this.consent = !this.consent;
+  protected toggleConsentProducts(): void {
+    this.consentProducts = !this.consentProducts;
+    this.persist();
+  }
+
+  protected toggleConsentLiability(): void {
+    this.consentLiability = !this.consentLiability;
     this.persist();
   }
 
@@ -411,7 +417,7 @@ export class DonationWizardPageComponent {
   }
 
   protected continueFromGuidelines(): void {
-    if (!this.consent) {
+    if (!this.consentProducts || !this.consentLiability) {
       return;
     }
 
@@ -703,7 +709,8 @@ export class DonationWizardPageComponent {
 
   private applyState(state: DonationWizardState): void {
     this.step = state.step;
-    this.consent = state.consent;
+    this.consentProducts = state.consentProducts;
+    this.consentLiability = state.consentLiability;
     this.deliveryMethod = state.deliveryMethod;
     this.form = { ...state.form };
     this.donationAmount = state.donationAmount;
@@ -716,7 +723,8 @@ export class DonationWizardPageComponent {
   private snapshotState(): DonationWizardState {
     return {
       step: this.step,
-      consent: this.consent,
+      consentProducts: this.consentProducts,
+      consentLiability: this.consentLiability,
       deliveryMethod: this.deliveryMethod,
       form: { ...this.form },
       donationAmount: this.donationAmount,
@@ -729,7 +737,8 @@ export class DonationWizardPageComponent {
 
   private reset(): void {
     this.step = 0;
-    this.consent = false;
+    this.consentProducts = false;
+    this.consentLiability = false;
     this.deliveryMethod = null;
     this.form = { ...DEFAULT_WIZARD_FORM_STATE };
     this.donationAmount = 25;
