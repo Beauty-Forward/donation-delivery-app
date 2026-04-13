@@ -104,8 +104,7 @@ export class DonationWizardPageComponent {
     {
       id: 'courier',
       title: 'Courier Pickup',
-      description:
-        'We send a Roadie driver to collect from your door. A small donation covers the cost.',
+      description: 'We send a courier to collect from your door. A small donation covers the cost.',
       tag: 'Most popular',
     },
     {
