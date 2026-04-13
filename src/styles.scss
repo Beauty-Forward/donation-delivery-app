@@ -1,4 +1,58 @@
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap');
+@font-face {
+  font-family: 'Alte Haas Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/alte-haas-grotesk/AlteHaasGroteskRegular.woff') format('woff');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alte Haas Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  src: url('/fonts/alte-haas-grotesk/AlteHaasGroteskBold.woff') format('woff');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Sauce Sans';
+  font-style: normal;
+  font-weight: 300;
+  src: url('/fonts/open-sauce-sans/open-sauce-sans-latin-300-normal.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Sauce Sans';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/open-sauce-sans/open-sauce-sans-latin-400-normal.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Sauce Sans';
+  font-style: normal;
+  font-weight: 500;
+  src: url('/fonts/open-sauce-sans/open-sauce-sans-latin-500-normal.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Sauce Sans';
+  font-style: normal;
+  font-weight: 600;
+  src: url('/fonts/open-sauce-sans/open-sauce-sans-latin-600-normal.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Sauce Sans';
+  font-style: normal;
+  font-weight: 700;
+  src: url('/fonts/open-sauce-sans/open-sauce-sans-latin-700-normal.woff2') format('woff2');
+  font-display: swap;
+}
 
 * {
   box-sizing: border-box;
@@ -11,9 +65,9 @@ body {
 }
 
 body {
-  font-family: 'Outfit', sans-serif;
-  color: #111111;
-  background: #fafaf9;
+  font-family: 'Open Sauce Sans', sans-serif;
+  color: #181000;
+  background: #FCFAF7;
 }
 
 button,
