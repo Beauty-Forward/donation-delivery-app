@@ -659,6 +659,10 @@ export class DonationWizardPageComponent {
       errors['time'] = 'Select a time';
     }
 
+    if (!this.form.courierNotes.trim()) {
+      errors['courierNotes'] = 'Fill out courier notes';
+    }
+
     this.errors = errors;
     return Object.keys(errors).length === 0;
   }

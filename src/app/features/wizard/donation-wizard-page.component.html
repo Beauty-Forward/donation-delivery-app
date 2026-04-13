@@ -429,9 +429,16 @@
                 >
                 <textarea
                   id="courier-notes"
+                  name="courier-notes"
                   rows="2"
-                  placeholder="Doorman, buzzer code, gate code, or special delivery instructions? If nothing, write ‘no notes’."
+                  placeholder="Doorman, buzzer code, gate code, or special delivery instructions? If nothing, write 'no notes'."
+                  [ngModel]="form.courierNotes"
+                  (ngModelChange)="updateField('courierNotes', $event)"
+                  [class.invalid]="!!errors['courierNotes']"
                 ></textarea>
+                @if (errors['courierNotes']) {
+                  <p class="field-error">{{ errors['courierNotes'] }}</p>
+                }
               </form>
             </div>
 
