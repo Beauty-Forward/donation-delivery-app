@@ -272,6 +272,10 @@ export class DonationWizardPageComponent {
           lines: [`${this.pickupDateLabel} at ${this.selectedTime}`],
         },
         {
+          label: 'Notes for the courier',
+          lines: [this.form.courierNotes],
+        },
+        {
           label: 'Donation',
           lines: [`$${this.finalDonationAmount}`],
         },
@@ -657,6 +661,10 @@ export class DonationWizardPageComponent {
 
     if (!this.selectedTime) {
       errors['time'] = 'Select a time';
+    }
+
+    if (!this.form.courierNotes.trim()) {
+      errors['courierNotes'] = 'Fill out courier notes';
     }
 
     this.errors = errors;
