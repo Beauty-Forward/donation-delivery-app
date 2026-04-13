@@ -622,6 +622,29 @@
   margin-top: 0.5rem;
 }
 
+.courier-notes {
+  display: flex;
+  gap: 0.6rem;
+  flex-direction: column;
+}
+
+.courier-notes textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  padding: 0.72rem 0.78rem;
+  font: inherit;
+  color: var(--text-main);
+  background: #fff;
+  line-height: normal;
+  resize: none;
+
+  &::placeholder {
+    font-size: 0.75rem;
+    color: var(--text-soft);
+  }
+}
+
 @media (min-width: 40rem) {
   .field-grid.two-up {
     grid-template-columns: repeat(2, minmax(0, 1fr));
