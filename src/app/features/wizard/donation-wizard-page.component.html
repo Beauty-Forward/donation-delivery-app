@@ -76,10 +76,10 @@
             <button
               class="consent-card"
               type="button"
-              [class.checked]="consent"
-              (click)="toggleConsent()"
+              [class.checked]="consentProducts"
+              (click)="toggleConsentProducts()"
             >
-              <span class="checkbox">{{ consent ? '✓' : '' }}</span>
+              <span class="checkbox">{{ consentProducts ? '✓' : '' }}</span>
               <span>
                 By checking this box, I confirm that all products I am donating are unopened,
                 unexpired, and in their original packaging. I understand that Beauty Forward
@@ -90,10 +90,10 @@
             <button
               class="consent-card"
               type="button"
-              [class.checked]="consent"
-              (click)="toggleConsent()"
+              [class.checked]="consentLiability"
+              (click)="toggleConsentLiability()"
             >
-              <span class="checkbox">{{ consent ? '✓' : '' }}</span>
+              <span class="checkbox">{{ consentLiability ? '✓' : '' }}</span>
               <span>
                 By checking this box, I release Beauty Forward Inc. and its representatives from any
                 liability once the products are collected. I understand that products will be
@@ -106,7 +106,7 @@
               <button
                 type="button"
                 class="btn btn-primary"
-                [disabled]="!consent"
+                [disabled]="!consentProducts || !consentLiability"
                 (click)="continueFromGuidelines()"
               >
                 Continue →
