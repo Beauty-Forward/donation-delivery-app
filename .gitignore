@@ -40,6 +40,7 @@ testem.log
 /typings
 __screenshots__/
 /plans
+/functions
 
 # System files
 .DS_Store

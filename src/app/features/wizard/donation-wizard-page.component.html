@@ -1,8 +1,7 @@
 <div class="wizard-page">
   <div class="wizard-card">
     <header class="wizard-header">
-      <span class="brand-light">beauty</span>
-      <span class="brand-bold">forward</span>
+      <img src="beauty-forward-lockup.svg" alt="Beauty Forward by Beauty Access" class="brand-logo" />
     </header>
 
     @if (step > 0 && !submitted) {
@@ -468,7 +467,7 @@
                 Confirmation sent to <strong>{{ form.email }}</strong
                 >.
                 @if (deliveryMethod === 'courier') {
-                  Your Roadie driver will arrive on <strong>{{ pickupDateLabel }}</strong> at
+                  Your Roadie driver will arrive on <strong>{{ pickupDateLabel }}</strong> between
                   <strong>{{ selectedTime }}</strong
                   >.
                 }

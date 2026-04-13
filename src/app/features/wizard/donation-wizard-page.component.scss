@@ -1,14 +1,21 @@
 :host {
   --card-bg: #ffffff;
-  --panel-bg: #fafaf9;
-  --text-main: #111111;
-  --text-soft: #71717a;
-  --border: #e8e8e6;
-  --accent: #111111;
-  --accent-soft: #f5f5f4;
-  --danger: #dc2626;
-  --green: #00b140;
-  --green-soft: #e8f8ee;
+  --panel-bg: #FCFAF7;
+  --text-main: #181000;
+  --text-soft: #6b6560;
+  --heading-color: #295018;
+  --border: #e8e4de;
+  --accent: #181000;
+  --accent-soft: #F7F3ED;
+  --danger: #650B03;
+  --green: #295018;
+  --green-soft: #E8F0D8;
+  --buttercup: #FFEFBE;
+  --dusty-blue: #C0D5DC;
+  --eucalyptus: #C1D4A3;
+  --rosewater: #FFD8D6;
+  --font-heading: 'Alte Haas Grotesk', sans-serif;
+  --font-body: 'Open Sauce Sans', sans-serif;
 
   display: block;
 }
@@ -41,20 +48,11 @@
   border-bottom: 1px solid var(--border);
 }
 
-.brand-light,
-.brand-bold {
-  font-family: 'Sora', sans-serif;
-  font-size: clamp(1.5rem, 4vw, 1.8rem);
-  letter-spacing: -0.01em;
-}
-
-.brand-light {
-  font-weight: 300;
-}
-
-.brand-bold {
-  font-weight: 700;
-  margin-left: 0.25rem;
+.brand-logo {
+  display: block;
+  margin: 0 auto;
+  height: 2.2rem;
+  width: auto;
 }
 
 .progress-row {
@@ -99,9 +97,10 @@
 .pane h1,
 .pane h2 {
   margin: 0;
-  font-family: 'Sora', sans-serif;
-  color: var(--text-main);
-  line-height: 1.16;
+  font-family: var(--font-heading);
+  color: var(--heading-color);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
   text-align: center;
 }
 
@@ -111,7 +110,7 @@
 
 .pane h2 {
   font-size: clamp(1.5rem, 4vw, 1.75rem);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .pane-subtitle {
@@ -141,7 +140,7 @@
   display: grid;
   place-items: center;
   margin: 0 auto 0.5rem;
-  background: var(--accent-soft);
+  background: var(--buttercup);
 }
 
 #pixel-heart {
@@ -156,8 +155,9 @@
 .step-label {
   margin: 0;
   text-align: center;
+  font-family: var(--font-heading);
   font-size: 0.68rem;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-soft);
   font-weight: 700;
@@ -165,8 +165,9 @@
 
 .section-eyebrow {
   margin: 0;
+  font-family: var(--font-heading);
   font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-soft);
   font-weight: 700;
@@ -251,17 +252,18 @@
 }
 
 .notice-card {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 239, 190, 0.6);
   border-radius: 0.8rem;
   padding: 0.8rem 0.9rem;
-  background: var(--accent-soft);
+  background: var(--buttercup);
 }
 
 .notice-card strong {
   display: block;
+  font-family: var(--font-heading);
   font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.05em;
   margin-bottom: 0.2rem;
 }
 
@@ -327,7 +329,7 @@
 
 .method-option.selected {
   border-color: var(--text-main);
-  background: var(--accent-soft);
+  background: var(--buttercup);
 }
 
 .method-title-row {
@@ -349,9 +351,10 @@
 
 .method-tag {
   border-radius: 999px;
-  background: var(--border);
-  color: var(--text-soft);
+  background: var(--buttercup);
+  color: var(--text-main);
   padding: 0.15rem 0.45rem;
+  font-family: var(--font-heading);
   font-size: 0.62rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -364,8 +367,9 @@
 }
 
 .field label {
+  font-family: var(--font-heading);
   font-size: 0.72rem;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-soft);
   font-weight: 700;
@@ -390,7 +394,7 @@
 .field input:focus,
 .field select:focus,
 .btn:focus {
-  outline: 2px solid rgba(17, 17, 17, 0.18);
+  outline: 2px solid rgba(24, 16, 0, 0.18);
   outline-offset: 1px;
 }
 
@@ -436,7 +440,7 @@
 .date-option.selected,
 .time-option.selected {
   border-color: var(--text-main);
-  background: var(--accent-soft);
+  background: var(--buttercup);
 }
 
 .donation-preset-grid {
@@ -482,7 +486,7 @@
 .roadie-card {
   border-radius: 0.9rem;
   padding: 0.9rem;
-  background: #111118;
+  background: #181000;
   color: #fff;
 }
 
@@ -492,10 +496,11 @@
   border-radius: 999px;
   background: var(--green);
   padding: 0.18rem 0.58rem;
+  font-family: var(--font-heading);
   font-size: 0.62rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   margin-bottom: 0.42rem;
 }
 
@@ -516,9 +521,10 @@
 }
 
 .summary-label {
+  font-family: var(--font-heading);
   font-size: 0.68rem;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   color: var(--text-soft);
   font-weight: 700;
 }
@@ -534,7 +540,7 @@
   align-items: center;
   border-radius: 999px;
   background: var(--green-soft);
-  color: #007d2f;
+  color: var(--green);
   padding: 0.4rem 0.68rem;
   font-size: 0.75rem;
   font-weight: 600;
@@ -551,7 +557,7 @@
   margin: 0 auto;
   display: grid;
   place-items: center;
-  background: var(--text-main);
+  background: var(--green);
   color: #fff;
   font-size: 1.2rem;
 }
@@ -577,9 +583,9 @@
   border: 0;
   border-radius: 999px;
   padding: 0.7rem 1.1rem;
-  font: inherit;
-  font-size: 0.86rem;
-  font-weight: 600;
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
   cursor: pointer;
   transition:
     opacity 0.2s ease,
