@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, ElementRef, ViewChild, inject } from '@angular/core';
+import { CUSTOM_ELEMENTS_SCHEMA, Component, DestroyRef, ElementRef, ViewChild, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -65,6 +65,7 @@ interface ConfirmationRow {
   imports: [CommonModule, FormsModule],
   templateUrl: './donation-wizard-page.component.html',
   styleUrl: './donation-wizard-page.component.scss',
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class DonationWizardPageComponent {
   @ViewChild('containerRef') private containerRef?: ElementRef<HTMLDivElement>;
