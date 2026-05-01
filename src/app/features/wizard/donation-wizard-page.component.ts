@@ -1,5 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { CUSTOM_ELEMENTS_SCHEMA, Component, DestroyRef, ElementRef, ViewChild, inject } from '@angular/core';
+import {
+  CUSTOM_ELEMENTS_SCHEMA,
+  Component,
+  DestroyRef,
+  ElementRef,
+  ViewChild,
+  inject,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -458,7 +465,7 @@ export class DonationWizardPageComponent {
       return;
     }
 
-    this.transitionLocal(5);
+    this.transitionLocal(6);
   }
 
   protected continueFromSchedule(): void {
@@ -466,7 +473,7 @@ export class DonationWizardPageComponent {
       return;
     }
 
-    void this.transitionRoute('/pickup/review', 6, false);
+    void this.transitionLocal(5);
   }
 
   protected continueFromDropoffInfo(): void {
