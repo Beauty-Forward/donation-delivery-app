@@ -331,36 +331,8 @@
               amount from $5 helps us keep going.
             </p>
 
-            <div class="donation-preset-grid">
-              @for (amount of donationPresets; track amount) {
-                <button
-                  type="button"
-                  class="donation-preset"
-                  [class.selected]="donationAmount === amount && !customAmount"
-                  (click)="setDonationPreset(amount)"
-                >
-                  <strong>${{ amount }}</strong>
-                  @if (amount === 25) {
-                    <span class="method-tag">Recommended</span>
-                  }
-                </button>
-              }
-            </div>
-
-            <div class="field spacing-top">
-              <label for="customAmount">Custom Amount</label>
-              <input
-                id="customAmount"
-                type="number"
-                min="5"
-                [ngModel]="customAmount"
-                (ngModelChange)="setCustomAmount($event)"
-                placeholder="Custom amount"
-                [class.invalid]="!!errors['donation']"
-              />
-              @if (errors['donation']) {
-                <p class="field-error">{{ errors['donation'] }}</p>
-              }
+            <div class="givebutter-wrapper">
+              <givebutter-widget id="Lqb4J2"></givebutter-widget>
             </div>
 
             <div class="notice-card spacing-top">
@@ -512,9 +484,6 @@
                     }
                   </div>
                 }
-              </div>
-              <div>
-                <givebutter-widget id="Lqb4J2"></givebutter-widget>
               </div>
 
               <div class="wizard-nav">
