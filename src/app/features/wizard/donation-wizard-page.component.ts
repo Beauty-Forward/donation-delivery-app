@@ -1,5 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, ElementRef, ViewChild, inject } from '@angular/core';
+import {
+  CUSTOM_ELEMENTS_SCHEMA,
+  Component,
+  DestroyRef,
+  ElementRef,
+  ViewChild,
+  inject,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -65,6 +72,7 @@ interface ConfirmationRow {
   imports: [CommonModule, FormsModule],
   templateUrl: './donation-wizard-page.component.html',
   styleUrl: './donation-wizard-page.component.scss',
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class DonationWizardPageComponent {
   @ViewChild('containerRef') private containerRef?: ElementRef<HTMLDivElement>;
@@ -457,7 +465,7 @@ export class DonationWizardPageComponent {
       return;
     }
 
-    this.transitionLocal(5);
+    this.transitionLocal(6);
   }
 
   protected continueFromSchedule(): void {
@@ -465,7 +473,7 @@ export class DonationWizardPageComponent {
       return;
     }
 
-    void this.transitionRoute('/pickup/review', 6, false);
+    void this.transitionLocal(5);
   }
 
   protected continueFromDropoffInfo(): void {

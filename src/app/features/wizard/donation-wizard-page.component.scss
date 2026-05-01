@@ -1,19 +1,19 @@
 :host {
   --card-bg: #ffffff;
-  --panel-bg: #FCFAF7;
+  --panel-bg: #fcfaf7;
   --text-main: #181000;
   --text-soft: #6b6560;
   --heading-color: #295018;
   --border: #e8e4de;
   --accent: #181000;
-  --accent-soft: #F7F3ED;
-  --danger: #650B03;
+  --accent-soft: #f7f3ed;
+  --danger: #650b03;
   --green: #295018;
-  --green-soft: #E8F0D8;
-  --buttercup: #FFEFBE;
-  --dusty-blue: #C0D5DC;
-  --eucalyptus: #C1D4A3;
-  --rosewater: #FFD8D6;
+  --green-soft: #e8f0d8;
+  --buttercup: #ffefbe;
+  --dusty-blue: #c0d5dc;
+  --eucalyptus: #c1d4a3;
+  --rosewater: #ffd8d6;
   --font-heading: 'Alte Haas Grotesk', sans-serif;
   --font-body: 'Open Sauce Sans', sans-serif;
 
@@ -472,6 +472,18 @@
 
 .date-option strong {
   font-size: 1.2rem;
+}
+
+.givebutter-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+
+  givebutter-widget {
+    display: block;
+    width: 100%;
+    max-width: 480px;
+  }
 }
 
 .time-grid {

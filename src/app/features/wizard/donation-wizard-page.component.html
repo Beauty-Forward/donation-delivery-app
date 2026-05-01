@@ -325,68 +325,6 @@
         @case (4) {
           <section class="pane">
             <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
-            <h2>Support our mission</h2>
-            <p class="pane-subtitle">
-              A <strong>$25 donation</strong> covers the full cost of your courier pickup. Any
-              amount from $5 helps us keep going.
-            </p>
-
-            <div class="donation-preset-grid">
-              @for (amount of donationPresets; track amount) {
-                <button
-                  type="button"
-                  class="donation-preset"
-                  [class.selected]="donationAmount === amount && !customAmount"
-                  (click)="setDonationPreset(amount)"
-                >
-                  <strong>${{ amount }}</strong>
-                  @if (amount === 25) {
-                    <span class="method-tag">Recommended</span>
-                  }
-                </button>
-              }
-            </div>
-
-            <div class="field spacing-top">
-              <label for="customAmount">Custom Amount</label>
-              <input
-                id="customAmount"
-                type="number"
-                min="5"
-                [ngModel]="customAmount"
-                (ngModelChange)="setCustomAmount($event)"
-                placeholder="Custom amount"
-                [class.invalid]="!!errors['donation']"
-              />
-              @if (errors['donation']) {
-                <p class="field-error">{{ errors['donation'] }}</p>
-              }
-            </div>
-
-            <div class="notice-card spacing-top">
-              <strong>Tax-deductible</strong>
-              <p>Beauty Forward is a 501(c)(3). Receipt sent via email.</p>
-            </div>
-
-            <div>
-              <img id="pixel-heart" src="pixel-heart.webp" />
-              <p class="pane-note">
-                Beauty Forward is powered by donations. We wouldn't be able to do this without you!
-              </p>
-            </div>
-
-            <div class="wizard-nav">
-              <button type="button" class="btn btn-secondary" (click)="backTo(3)">← Back</button>
-              <button type="button" class="btn btn-primary" (click)="continueFromDonation()">
-                Donate ${{ finalDonationAmount }} →
-              </button>
-            </div>
-          </section>
-        }
-
-        @case (5) {
-          <section class="pane">
-            <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
             <h2>Schedule your pickup</h2>
             <p class="pane-subtitle">Choose a date and exact time.</p>
 
@@ -454,6 +392,40 @@
               <button type="button" class="btn btn-secondary" (click)="backTo(4)">← Back</button>
               <button type="button" class="btn btn-primary" (click)="continueFromSchedule()">
                 Review →
+              </button>
+            </div>
+          </section>
+        }
+
+        @case (5) {
+          <section class="pane">
+            <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
+            <h2>Support our mission</h2>
+            <p class="pane-subtitle">
+              A <strong>$25 donation</strong> covers the full cost of your courier pickup. Any
+              amount from $5 helps us keep going.
+            </p>
+
+            <div class="givebutter-wrapper">
+              <givebutter-widget id="Lqb4J2"></givebutter-widget>
+            </div>
+
+            <div class="notice-card spacing-top">
+              <strong>Tax-deductible</strong>
+              <p>Beauty Forward is a 501(c)(3). Receipt sent via email.</p>
+            </div>
+
+            <div>
+              <img id="pixel-heart" src="pixel-heart.webp" />
+              <p class="pane-note">
+                Beauty Forward is powered by donations. We wouldn't be able to do this without you!
+              </p>
+            </div>
+
+            <div class="wizard-nav">
+              <button type="button" class="btn btn-secondary" (click)="backTo(3)">← Back</button>
+              <button type="button" class="btn btn-primary" (click)="continueFromDonation()">
+                Donate ${{ finalDonationAmount }} →
               </button>
             </div>
           </section>
