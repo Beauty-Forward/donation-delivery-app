@@ -10,8 +10,7 @@
     "watch": "tsc --watch",
     "serve": "npm run build && firebase emulators:start --only functions,firestore",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log",
-    "test": "vitest run"
+    "logs": "firebase functions:log"
   },
   "dependencies": {
     "@google-cloud/vertexai": "^1.12.0",
@@ -20,7 +19,6 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "typescript": "^5.8.2",
-    "vitest": "^2.1.0"
+    "typescript": "^5.8.2"
   }
 }
