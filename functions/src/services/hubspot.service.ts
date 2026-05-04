@@ -4,7 +4,8 @@ export interface HubspotDonorUpsertInput {
   email: string;
   fullName: string;
   phone: string;
-  borough?: string;
+  city?: string;
+  state?: string;
   packageSize?: string;
   donationMethod: HubspotDonationMethod;
   donationAmountUsd?: number;
@@ -16,14 +17,14 @@ export interface HubspotDonorUpsertInput {
 
 export class HubspotService {
   constructor(
-    private readonly token: string = process.env['HUBSPOT_PRIVATE_APP_TOKEN'] ?? '',
+    private readonly token: string = process.env['HUBSPOT_SERVICE_KEY'] ?? '',
     private readonly baseUrl: string = 'https://api.hubapi.com',
     private readonly fetchImpl: typeof fetch = fetch
   ) {}
 
   async upsertDonorContact(input: HubspotDonorUpsertInput): Promise<void> {
     if (!this.token) {
-      console.warn('HUBSPOT_PRIVATE_APP_TOKEN not set; skipping CRM sync');
+      console.warn('HUBSPOT_SERVICE_KEY not set; skipping CRM sync');
       return;
     }
 
@@ -42,7 +43,8 @@ export class HubspotService {
       properties['donation_count'] = currentCount + 1;
     }
 
-    if (input.borough) properties['borough'] = input.borough;
+    if (input.city) properties['city'] = input.city;
+    if (input.state) properties['state'] = input.state;
     if (input.packageSize) properties['package_size'] = input.packageSize;
     if (input.donationAmountUsd != null) {
       properties['last_donation_amount'] = input.donationAmountUsd;
