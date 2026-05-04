@@ -99,10 +99,18 @@ export const createDonationRequest = onCall({ region: 'us-central1' }, async (re
     });
   });
 
-  const borough =
-    typeof payload.metadata?.['borough'] === 'string'
-      ? (payload.metadata['borough'] as string)
+  const metaCity =
+    typeof payload.metadata?.['city'] === 'string'
+      ? (payload.metadata['city'] as string)
       : undefined;
+  const metaState =
+    typeof payload.metadata?.['state'] === 'string'
+      ? (payload.metadata['state'] as string)
+      : undefined;
+  const city =
+    metaCity ?? payload.pickup?.pickupAddress?.city ?? payload.shipping?.senderAddress?.city;
+  const state =
+    metaState ?? payload.pickup?.pickupAddress?.state ?? payload.shipping?.senderAddress?.state;
   const packageSize =
     typeof payload.metadata?.['packageSize'] === 'string'
       ? (payload.metadata['packageSize'] as string)
@@ -115,7 +123,8 @@ export const createDonationRequest = onCall({ region: 'us-central1' }, async (re
       phone: payload.donor.phone,
       donationMethod: payload.donationType,
       donationAmountUsd: payload.contribution.amountUsd,
-      borough,
+      city,
+      state,
       packageSize
     })
     .catch((err) => console.warn('HubSpot upsert failed', err));
@@ -176,6 +185,14 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
 
     if (data?.['donor']?.email) {
       const meta = data?.['metadata'] ?? {};
+      const docCity =
+        (typeof meta['city'] === 'string' ? meta['city'] : undefined) ??
+        data?.['pickup']?.pickupAddress?.city ??
+        data?.['shipping']?.senderAddress?.city;
+      const docState =
+        (typeof meta['state'] === 'string' ? meta['state'] : undefined) ??
+        data?.['pickup']?.pickupAddress?.state ??
+        data?.['shipping']?.senderAddress?.state;
       await hubspotService
         .upsertDonorContact({
           email: data['donor'].email,
@@ -183,7 +200,8 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
           phone: data['donor'].phone ?? '',
           donationMethod: data['donationType'],
           donationAmountUsd: completedAmount,
-          borough: typeof meta['borough'] === 'string' ? meta['borough'] : undefined,
+          city: docCity,
+          state: docState,
           packageSize:
             typeof meta['packageSize'] === 'string' ? meta['packageSize'] : undefined,
           refreshOnly: true
