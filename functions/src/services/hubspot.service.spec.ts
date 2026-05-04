@@ -44,7 +44,7 @@ describe('HubspotService.upsertDonorContact', () => {
 
     expect(fn).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(
-      'HUBSPOT_SERVICE_KEY not set; skipping CRM sync'
+      'HUBSPOT_PRIVATE_APP_TOKEN not set; skipping CRM sync'
     );
     warn.mockRestore();
   });
@@ -60,8 +60,7 @@ describe('HubspotService.upsertDonorContact', () => {
       email: 'jane@example.com',
       fullName: 'Jane Rivera',
       phone: '5551234567',
-      city: 'Brooklyn',
-      state: 'NY',
+      borough: 'Brooklyn',
       packageSize: 'medium',
       donationMethod: 'dropoff',
       donationAmountUsd: 25
@@ -95,8 +94,7 @@ describe('HubspotService.upsertDonorContact', () => {
             phone: '5551234567',
             donation_method: 'dropoff',
             donation_count: 3,
-            city: 'Brooklyn',
-            state: 'NY',
+            borough: 'Brooklyn',
             package_size: 'medium',
             last_donation_amount: 25
           }
@@ -179,8 +177,7 @@ describe('HubspotService.upsertDonorContact', () => {
     const props = JSON.parse(
       (calls[1]![1] as RequestInit).body as string
     ).inputs[0].properties;
-    expect(props.city).toBeUndefined();
-    expect(props.state).toBeUndefined();
+    expect(props.borough).toBeUndefined();
     expect(props.package_size).toBeUndefined();
     expect(props.last_donation_amount).toBeUndefined();
   });
