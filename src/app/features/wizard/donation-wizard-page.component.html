@@ -246,6 +246,10 @@
               <p class="field-error spacing-top">{{ errors['packageSize'] }}</p>
             }
 
+            @if (deliveryMethod === 'dropoff') {
+              <div class="field"><p>Only available Tuesdays and Thursdays, 10-4 ET</p></div>
+            }
+
             @if (deliveryMethod === 'courier') {
               <p class="section-eyebrow spacing-top-lg">Pickup Address</p>
 
