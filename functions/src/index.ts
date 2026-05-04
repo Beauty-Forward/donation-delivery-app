@@ -12,6 +12,7 @@ import {
 import { MockRoadieCourierProvider } from './providers/mock-roadie-provider.js';
 import { MockShippingLabelProvider } from './providers/mock-shipping-label-provider.js';
 import { GivebutterService } from './services/givebutter.service.js';
+import { HubspotService } from './services/hubspot.service.js';
 import { generateDropoffReference } from './utils/dropoff-reference.js';
 import {
   createContributionSessionSchema,
@@ -24,6 +25,7 @@ const db = getFirestore();
 const courierProvider = new MockRoadieCourierProvider();
 const shippingLabelProvider = new MockShippingLabelProvider();
 const givebutterService = new GivebutterService();
+const hubspotService = new HubspotService();
 
 export const createDonationRequest = onCall({ region: 'us-central1' }, async (request) => {
   const parsed = createDonationRequestSchema.safeParse(request.data);
@@ -97,6 +99,27 @@ export const createDonationRequest = onCall({ region: 'us-central1' }, async (re
     });
   });
 
+  const borough =
+    typeof payload.metadata?.['borough'] === 'string'
+      ? (payload.metadata['borough'] as string)
+      : undefined;
+  const packageSize =
+    typeof payload.metadata?.['packageSize'] === 'string'
+      ? (payload.metadata['packageSize'] as string)
+      : undefined;
+
+  await hubspotService
+    .upsertDonorContact({
+      email: payload.donor.email,
+      fullName: payload.donor.fullName,
+      phone: payload.donor.phone,
+      donationMethod: payload.donationType,
+      donationAmountUsd: payload.contribution.amountUsd,
+      borough,
+      packageSize
+    })
+    .catch((err) => console.warn('HubSpot upsert failed', err));
+
   return {
     requestId: requestRef.id,
     donationType: payload.donationType,
@@ -143,6 +166,30 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
       },
       { merge: true }
     );
+
+    const snapshot = await db.collection('donation_requests').doc(requestId).get();
+    const data = snapshot.data();
+    const completedAmount =
+      typeof req.body?.data?.amount === 'number'
+        ? req.body.data.amount
+        : data?.['contribution']?.amountUsd;
+
+    if (data?.['donor']?.email) {
+      const meta = data?.['metadata'] ?? {};
+      await hubspotService
+        .upsertDonorContact({
+          email: data['donor'].email,
+          fullName: data['donor'].fullName ?? '',
+          phone: data['donor'].phone ?? '',
+          donationMethod: data['donationType'],
+          donationAmountUsd: completedAmount,
+          borough: typeof meta['borough'] === 'string' ? meta['borough'] : undefined,
+          packageSize:
+            typeof meta['packageSize'] === 'string' ? meta['packageSize'] : undefined,
+          refreshOnly: true
+        })
+        .catch((err) => console.warn('HubSpot webhook upsert failed', err));
+    }
   }
 
   res.status(200).json({ ok: true });
