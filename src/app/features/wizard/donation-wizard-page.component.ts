@@ -18,6 +18,13 @@ import {
   DonationWizardStateService,
   WizardFormState,
 } from '../../core/services/donation-wizard-state.service';
+import { DonationApiService } from '../../core/services/donation-api.service';
+import { WarehouseConfigService } from '../../core/services/warehouse-config.service';
+import {
+  AddressInfo,
+  CreateDonationRequestPayload,
+  DonationType,
+} from '../../core/models/donation.models';
 import { environment } from '../../../environments/environment';
 
 type RouteMode =
@@ -80,6 +87,8 @@ export class DonationWizardPageComponent {
   private readonly router = inject(Router);
   private readonly stateStore = inject(DonationWizardStateService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly donationApi = inject(DonationApiService);
+  private readonly warehouseConfig = inject(WarehouseConfigService);
 
   protected readonly boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'The Bronx', 'Staten Island'];
   protected readonly packageSizes: PackageOption[] = [
@@ -489,6 +498,12 @@ export class DonationWizardPageComponent {
       return;
     }
 
+    // Fire-and-forget: persist the donation_request server-side (which also
+    // triggers the HubSpot CRM upsert). Errors are logged but do not block
+    // the user from reaching the confirmation screen — the API service
+    // already has a Firestore-direct fallback for callable failures.
+    void this.persistDonation();
+
     if (this.deliveryMethod === 'courier') {
       void this.transitionRoute('/pickup/confirmation', 6, true);
       return;
@@ -500,6 +515,108 @@ export class DonationWizardPageComponent {
     }
 
     void this.transitionRoute('/shipping/confirmation', 6, true);
+  }
+
+  private async persistDonation(): Promise<void> {
+    if (!this.deliveryMethod) {
+      return;
+    }
+
+    const donationType: DonationType =
+      this.deliveryMethod === 'courier'
+        ? 'pickup'
+        : this.deliveryMethod === 'dropoff'
+        ? 'dropoff'
+        : 'shipping';
+
+    // The wizard collects firstName + lastName separately; the backend
+    // donor schema uses fullName, so reassemble.
+    const fullName = `${this.form.firstName} ${this.form.lastName}`.trim();
+
+    // The wizard's borough field is the donor's NYC borough (Brooklyn,
+    // Queens, etc.). HubSpot's built-in `city` Contact property is where
+    // we land that — see hubspot.service.ts. State is hardcoded to NY
+    // because the wizard is NYC-only today.
+    const donorCity = this.form.borough || this.form.city;
+    const donorState = donorCity ? 'NY' : '';
+
+    const warehouseAddress = this.warehouseConfig.destination.address;
+
+    const payload: CreateDonationRequestPayload = {
+      donationType,
+      donor: {
+        fullName,
+        email: this.form.email,
+        phone: this.form.phone,
+      },
+      contribution: {
+        provider: 'givebutter',
+        // The wizard renders a Givebutter widget for the actual payment;
+        // we don't yet capture whether the user completed it. Mark as
+        // not_started — the Givebutter webhook will refresh status to
+        // completed once payment lands.
+        status: 'not_started',
+        amountUsd: this.finalDonationAmount,
+      },
+      metadata: {
+        flowVersion: 'wizard-v1',
+        channel: 'public-web',
+        source: 'donation-wizard',
+        packageSize: this.form.packageSize,
+        // Pass city/state through metadata so HubSpot picks them up even
+        // for dropoff/shipping payloads where the donor address isn't
+        // part of the typed payload.
+        city: donorCity,
+        state: donorState,
+      },
+    };
+
+    if (donationType === 'pickup') {
+      payload.pickup = {
+        pickupAddress: this.buildDonorAddress(donorCity, donorState),
+        preferredDate: this.selectedDate ?? '',
+        preferredTimeWindow: this.selectedTime ?? '',
+        donationNotes: this.form.courierNotes || undefined,
+        warehouseAddress,
+      };
+    } else if (donationType === 'dropoff') {
+      payload.dropoff = {
+        // The wizard doesn't ask dropoff donors to schedule a slot — they
+        // walk in during business hours. Mirror the createWalkInDonation
+        // pattern: use today's date and a "flexible" window.
+        preferredDate: new Date().toISOString().slice(0, 10),
+        preferredTimeWindow: 'flexible',
+        locationName: this.warehouseConfig.destination.name,
+        locationAddress: warehouseAddress,
+      };
+    } else {
+      // Shipping: the wizard doesn't currently collect a return/sender
+      // address from ship-mode donors (only courier mode prompts for
+      // the address fields). Fall back to whatever address fragments
+      // the donor entered earlier in the flow; if none, use a TBD
+      // placeholder so the validator passes. donation_request will be
+      // imperfect, but HubSpot still receives clean contact data.
+      payload.shipping = {
+        senderAddress: this.buildDonorAddress(donorCity, donorState),
+        shippingLabelRequested: false,
+      };
+    }
+
+    try {
+      await this.donationApi.createDonationRequest(payload);
+    } catch (err) {
+      console.warn('Failed to persist donation_request from wizard', err);
+    }
+  }
+
+  private buildDonorAddress(city: string, state: string): AddressInfo {
+    return {
+      line1: this.form.addressLine1 || 'Not provided',
+      line2: this.form.addressLine2 || undefined,
+      city: city || 'Not provided',
+      state: state || 'NY',
+      postalCode: this.form.zip || '00000',
+    };
   }
 
   protected backTo(step: number): void {
