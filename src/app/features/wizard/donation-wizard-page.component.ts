@@ -127,7 +127,8 @@ export class DonationWizardPageComponent {
     {
       id: 'dropoff',
       title: 'Drop Off',
-      description: 'Bring your donation to our Brooklyn warehouse during business hours. Free.',
+      description:
+        'Bring your donation to our Brooklyn warehouse during business hours. Available Tuesdays and Thursdays. Free.',
     },
     {
       id: 'ship',
@@ -526,8 +527,8 @@ export class DonationWizardPageComponent {
       this.deliveryMethod === 'courier'
         ? 'pickup'
         : this.deliveryMethod === 'dropoff'
-        ? 'dropoff'
-        : 'shipping';
+          ? 'dropoff'
+          : 'shipping';
 
     // The wizard collects firstName + lastName separately; the backend
     // donor schema uses fullName, so reassemble.
