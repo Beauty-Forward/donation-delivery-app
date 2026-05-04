@@ -22,6 +22,11 @@ import {
 initializeApp();
 
 const db = getFirestore();
+// Strip undefined values from documents instead of throwing. The donation
+// payload has three optional sub-objects (pickup / shipping / dropoff), only
+// one of which is populated per request — without this, the runTransaction
+// below fails with "Cannot use \"undefined\" as a Firestore value".
+db.settings({ ignoreUndefinedProperties: true });
 const courierProvider = new MockRoadieCourierProvider();
 const shippingLabelProvider = new MockShippingLabelProvider();
 const givebutterService = new GivebutterService();
