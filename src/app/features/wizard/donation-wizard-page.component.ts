@@ -26,6 +26,7 @@ import {
   DonationType,
 } from '../../core/models/donation.models';
 import { environment } from '../../../environments/environment';
+import { NYC_CITIES, US_STATES } from '../../core/constants/us-states';
 
 type RouteMode =
   | 'home'
@@ -90,7 +91,8 @@ export class DonationWizardPageComponent {
   private readonly donationApi = inject(DonationApiService);
   private readonly warehouseConfig = inject(WarehouseConfigService);
 
-  protected readonly boroughs = ['Manhattan', 'Brooklyn', 'Queens', 'The Bronx', 'Staten Island'];
+  protected readonly nycCities = NYC_CITIES;
+  protected readonly states = US_STATES;
   protected readonly packageSizes: PackageOption[] = [
     { id: 'small', label: 'Small', description: 'Fits in a shoebox' },
     { id: 'medium', label: 'Medium', description: 'Fits in the front seat of a car' },
@@ -280,7 +282,7 @@ export class DonationWizardPageComponent {
           label: 'Pickup',
           lines: [
             `${this.form.addressLine1}${this.form.addressLine2 ? `, ${this.form.addressLine2}` : ''}`,
-            `${this.form.borough}, NY ${this.form.zip}`,
+            `${this.form.city}, ${this.form.state} ${this.form.zip}`,
           ],
         },
         {
@@ -309,19 +311,23 @@ export class DonationWizardPageComponent {
             this.warehouse.hours,
           ],
         },
+        { label: 'Donating from', lines: [`${this.form.city}, ${this.form.state}`] },
         { label: 'Dropoff Notes', lines: [this.form.dropoffNotes] },
       );
     }
 
     if (this.deliveryMethod === 'ship') {
-      sections.push({
-        label: 'Ship to',
-        lines: [
-          this.warehouse.name,
-          `${this.warehouse.line1} ${this.warehouse.line2}`,
-          `${this.warehouse.city}, ${this.warehouse.state} ${this.warehouse.zip}`,
-        ],
-      });
+      sections.push(
+        {
+          label: 'Ship to',
+          lines: [
+            this.warehouse.name,
+            `${this.warehouse.line1} ${this.warehouse.line2}`,
+            `${this.warehouse.city}, ${this.warehouse.state} ${this.warehouse.zip}`,
+          ],
+        },
+        { label: 'Donating from', lines: [`${this.form.city}, ${this.form.state}`] },
+      );
     }
 
     return sections;
@@ -351,7 +357,7 @@ export class DonationWizardPageComponent {
         },
         {
           label: 'Address',
-          value: `${this.form.addressLine1}, ${this.form.borough}`,
+          value: `${this.form.addressLine1}, ${this.form.city}, ${this.form.state}`,
         },
         {
           label: 'Donation',
@@ -361,17 +367,29 @@ export class DonationWizardPageComponent {
     }
 
     if (this.deliveryMethod === 'dropoff') {
-      rows.push({
-        label: this.warehouse.name,
-        value: `${this.warehouse.line1} ${this.warehouse.line2} ${this.warehouse.city} ${this.warehouse.state}, ${this.warehouse.zip}`,
-      });
+      rows.push(
+        {
+          label: this.warehouse.name,
+          value: `${this.warehouse.line1} ${this.warehouse.line2} ${this.warehouse.city} ${this.warehouse.state}, ${this.warehouse.zip}`,
+        },
+        {
+          label: 'Donating from',
+          value: `${this.form.city}, ${this.form.state}`,
+        },
+      );
     }
 
     if (this.deliveryMethod === 'ship') {
-      rows.push({
-        label: 'Ship to',
-        value: `${this.warehouse.line1} ${this.warehouse.line2} ${this.warehouse.city} ${this.warehouse.state}, ${this.warehouse.zip}`,
-      });
+      rows.push(
+        {
+          label: 'Ship to',
+          value: `${this.warehouse.line1} ${this.warehouse.line2} ${this.warehouse.city} ${this.warehouse.state}, ${this.warehouse.zip}`,
+        },
+        {
+          label: 'Donating from',
+          value: `${this.form.city}, ${this.form.state}`,
+        },
+      );
     }
 
     return rows;
@@ -394,6 +412,11 @@ export class DonationWizardPageComponent {
   protected setMethod(method: DeliveryMethod): void {
     this.deliveryMethod = method;
     this.clearError('deliveryMethod');
+
+    if (method === 'courier' && !this.form.state) {
+      this.form = { ...this.form, state: 'NY' };
+    }
+
     this.persist();
   }
 
@@ -541,12 +564,8 @@ export class DonationWizardPageComponent {
     // donor schema uses fullName, so reassemble.
     const fullName = `${this.form.firstName} ${this.form.lastName}`.trim();
 
-    // The wizard's borough field is the donor's NYC borough (Brooklyn,
-    // Queens, etc.). HubSpot's built-in `city` Contact property is where
-    // we land that — see hubspot.service.ts. State is hardcoded to NY
-    // because the wizard is NYC-only today.
-    const donorCity = this.form.borough || this.form.city;
-    const donorState = donorCity ? 'NY' : '';
+    const donorCity = this.form.city;
+    const donorState = this.form.state;
 
     const warehouseAddress = this.warehouseConfig.destination.address;
 
@@ -571,9 +590,6 @@ export class DonationWizardPageComponent {
         channel: 'public-web',
         source: 'donation-wizard',
         packageSize: this.form.packageSize,
-        // Pass city/state through metadata so HubSpot picks them up even
-        // for dropoff/shipping payloads where the donor address isn't
-        // part of the typed payload.
         city: donorCity,
         state: donorState,
       },
@@ -599,12 +615,6 @@ export class DonationWizardPageComponent {
         dropoffNotes: this.form.dropoffNotes || undefined,
       };
     } else {
-      // Shipping: the wizard doesn't currently collect a return/sender
-      // address from ship-mode donors (only courier mode prompts for
-      // the address fields). Fall back to whatever address fragments
-      // the donor entered earlier in the flow; if none, use a TBD
-      // placeholder so the validator passes. donation_request will be
-      // imperfect, but HubSpot still receives clean contact data.
       payload.shipping = {
         senderAddress: this.buildDonorAddress(donorCity, donorState),
         shippingLabelRequested: false,
@@ -623,7 +633,7 @@ export class DonationWizardPageComponent {
       line1: this.form.addressLine1 || 'Not provided',
       line2: this.form.addressLine2 || undefined,
       city: city || 'Not provided',
-      state: state || 'NY',
+      state: state || 'Not provided',
       postalCode: this.form.zip || '00000',
     };
   }
@@ -759,13 +769,19 @@ export class DonationWizardPageComponent {
       errors['packageSize'] = 'Select a size';
     }
 
+    if (this.deliveryMethod) {
+      if (!this.form.city.trim()) {
+        errors['city'] = this.deliveryMethod === 'courier' ? 'Select a city' : 'Required';
+      }
+
+      if (!this.form.state) {
+        errors['state'] = 'Select a state';
+      }
+    }
+
     if (this.deliveryMethod === 'courier') {
       if (!this.form.addressLine1.trim()) {
         errors['addressLine1'] = 'Required';
-      }
-
-      if (!this.form.borough) {
-        errors['borough'] = 'Select a borough';
       }
 
       if (!this.form.zip.trim() || this.form.zip.replace(/\D/g, '').length < 5) {
