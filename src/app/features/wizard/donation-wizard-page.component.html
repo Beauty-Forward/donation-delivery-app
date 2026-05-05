@@ -271,6 +271,44 @@
               </div>
             }
 
+            @if (deliveryMethod === 'dropoff' || deliveryMethod === 'ship') {
+              <p class="section-eyebrow spacing-top-lg">Where are you donating from?</p>
+              <div class="field-grid two-up">
+                <div class="field">
+                  <label for="city">City</label>
+                  <input
+                    id="city"
+                    type="text"
+                    [ngModel]="form.city"
+                    (ngModelChange)="updateField('city', $event)"
+                    placeholder="New York"
+                    [class.invalid]="!!errors['city']"
+                  />
+                  @if (errors['city']) {
+                    <p class="field-error">{{ errors['city'] }}</p>
+                  }
+                </div>
+
+                <div class="field">
+                  <label for="state">State</label>
+                  <select
+                    id="state"
+                    [ngModel]="form.state"
+                    (ngModelChange)="updateField('state', $event)"
+                    [class.invalid]="!!errors['state']"
+                  >
+                    <option value="">Select</option>
+                    @for (s of states; track s.code) {
+                      <option [value]="s.code">{{ s.name }}</option>
+                    }
+                  </select>
+                  @if (errors['state']) {
+                    <p class="field-error">{{ errors['state'] }}</p>
+                  }
+                </div>
+              </div>
+            }
+
             @if (deliveryMethod === 'courier') {
               <p class="section-eyebrow spacing-top-lg">Pickup Address</p>
 
@@ -303,37 +341,52 @@
 
                 <div class="field-grid two-up">
                   <div class="field">
-                    <label for="borough">Borough</label>
+                    <label for="city">City</label>
                     <select
-                      id="borough"
-                      [ngModel]="form.borough"
-                      (ngModelChange)="updateField('borough', $event)"
-                      [class.invalid]="!!errors['borough']"
+                      id="city"
+                      [ngModel]="form.city"
+                      (ngModelChange)="updateField('city', $event)"
+                      [class.invalid]="!!errors['city']"
                     >
                       <option value="">Select</option>
-                      @for (borough of boroughs; track borough) {
-                        <option [value]="borough">{{ borough }}</option>
+                      @for (c of nycCities; track c) {
+                        <option [value]="c">{{ c }}</option>
                       }
                     </select>
-                    @if (errors['borough']) {
-                      <p class="field-error">{{ errors['borough'] }}</p>
+                    @if (errors['city']) {
+                      <p class="field-error">{{ errors['city'] }}</p>
                     }
                   </div>
 
                   <div class="field">
-                    <label for="zip">ZIP Code</label>
-                    <input
-                      id="zip"
-                      type="text"
-                      [ngModel]="form.zip"
-                      (ngModelChange)="updateField('zip', $event)"
-                      placeholder="10001"
-                      [class.invalid]="!!errors['zip']"
-                    />
-                    @if (errors['zip']) {
-                      <p class="field-error">{{ errors['zip'] }}</p>
+                    <label for="state">State</label>
+                    <select
+                      id="state"
+                      [ngModel]="form.state"
+                      (ngModelChange)="updateField('state', $event)"
+                      [class.invalid]="!!errors['state']"
+                    >
+                      <option value="NY">New York</option>
+                    </select>
+                    @if (errors['state']) {
+                      <p class="field-error">{{ errors['state'] }}</p>
                     }
                   </div>
+                </div>
+
+                <div class="field">
+                  <label for="zip">ZIP Code</label>
+                  <input
+                    id="zip"
+                    type="text"
+                    [ngModel]="form.zip"
+                    (ngModelChange)="updateField('zip', $event)"
+                    placeholder="10001"
+                    [class.invalid]="!!errors['zip']"
+                  />
+                  @if (errors['zip']) {
+                    <p class="field-error">{{ errors['zip'] }}</p>
+                  }
                 </div>
               </div>
             }

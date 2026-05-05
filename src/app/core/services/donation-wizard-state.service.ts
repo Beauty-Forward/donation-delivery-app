@@ -11,7 +11,7 @@ export interface WizardFormState {
   addressLine1: string;
   addressLine2: string;
   city: string;
-  borough: string;
+  state: string;
   zip: string;
   courierNotes: string;
   dropoffNotes: string;
@@ -39,7 +39,7 @@ export const DEFAULT_WIZARD_FORM_STATE: WizardFormState = {
   addressLine1: '',
   addressLine2: '',
   city: '',
-  borough: '',
+  state: '',
   zip: '',
   courierNotes: '',
   dropoffNotes: '',
