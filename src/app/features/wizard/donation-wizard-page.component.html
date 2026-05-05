@@ -247,7 +247,26 @@
             }
 
             @if (deliveryMethod === 'dropoff') {
-              <div class="field"><p>Only available Tuesdays and Thursdays, 10-4 ET</p></div>
+              <div class="hours-notice"><p>Only available Tuesdays and Thursdays, 10-4 ET</p></div>
+              <div>
+                <form class="courier-notes">
+                  <label class="section-eyebrow spacing-top-lg" for="courier-notes"
+                    >What time do you want to come by?</label
+                  >
+                  <textarea
+                    id="dropoff-notes"
+                    name="dropoff-notes"
+                    rows="2"
+                    placeholder="Let us know when during available hours you'd like to come by so we can expect you. Ex. 'Tuesday 4/4 at 4pm'"
+                    [ngModel]="form.dropoffNotes"
+                    (ngModelChange)="updateField('dropoffNotes', $event)"
+                    [class.invalid]="!!errors['dropoffNotes']"
+                  ></textarea>
+                  @if (errors['dropoffNotes']) {
+                    <p class="field-error spacing-top">{{ errors['dropoffNotes'] }}</p>
+                  }
+                </form>
+              </div>
             }
 
             @if (deliveryMethod === 'courier') {

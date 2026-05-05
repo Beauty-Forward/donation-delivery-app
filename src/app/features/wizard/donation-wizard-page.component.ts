@@ -299,15 +299,18 @@ export class DonationWizardPageComponent {
     }
 
     if (this.deliveryMethod === 'dropoff') {
-      sections.push({
-        label: this.warehouse.name,
-        lines: [
-          this.warehouse.line1,
-          this.warehouse.line2,
-          `${this.warehouse.city}, ${this.warehouse.state} ${this.warehouse.zip}`,
-          this.warehouse.hours,
-        ],
-      });
+      sections.push(
+        {
+          label: this.warehouse.name,
+          lines: [
+            this.warehouse.line1,
+            this.warehouse.line2,
+            `${this.warehouse.city}, ${this.warehouse.state} ${this.warehouse.zip}`,
+            this.warehouse.hours,
+          ],
+        },
+        { label: 'Dropoff Notes', lines: [this.form.dropoffNotes] },
+      );
     }
 
     if (this.deliveryMethod === 'ship') {
@@ -589,6 +592,7 @@ export class DonationWizardPageComponent {
         preferredTimeWindow: 'flexible',
         locationName: this.warehouseConfig.destination.name,
         locationAddress: warehouseAddress,
+        dropoffNotes: this.form.dropoffNotes || undefined,
       };
     } else {
       // Shipping: the wizard doesn't currently collect a return/sender

@@ -486,6 +486,15 @@
   }
 }
 
+.hours-notice {
+  justify-self: center;
+  color: var(--green);
+  border: 3px solid var(--border);
+  background-color: var(--eucalyptus);
+  border-radius: 0.8rem;
+  padding: 0.5rem;
+}
+
 .time-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
