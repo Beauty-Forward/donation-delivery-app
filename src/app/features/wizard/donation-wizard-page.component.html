@@ -364,9 +364,13 @@
                       id="state"
                       [ngModel]="form.state"
                       (ngModelChange)="updateField('state', $event)"
+                      [class.invalid]="!!errors['state']"
                     >
                       <option value="NY">New York</option>
                     </select>
+                    @if (errors['state']) {
+                      <p class="field-error">{{ errors['state'] }}</p>
+                    }
                   </div>
                 </div>
 

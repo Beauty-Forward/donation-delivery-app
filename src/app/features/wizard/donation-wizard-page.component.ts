@@ -412,12 +412,14 @@ export class DonationWizardPageComponent {
   protected setMethod(method: DeliveryMethod): void {
     this.deliveryMethod = method;
     this.clearError('deliveryMethod');
+    this.ensureMethodDefaults();
+    this.persist();
+  }
 
-    if (method === 'courier' && !this.form.state) {
+  private ensureMethodDefaults(): void {
+    if (this.deliveryMethod === 'courier' && this.form.state !== 'NY') {
       this.form = { ...this.form, state: 'NY' };
     }
-
-    this.persist();
   }
 
   protected toggleConsentProducts(): void {
@@ -727,6 +729,7 @@ export class DonationWizardPageComponent {
         break;
     }
 
+    this.ensureMethodDefaults();
     this.errors = {};
   }
 
@@ -806,6 +809,10 @@ export class DonationWizardPageComponent {
   }
 
   private validateDropoffTime(): boolean {
+    if (this.deliveryMethod !== 'dropoff') {
+      return true;
+    }
+
     const errors: Record<string, string> = {};
 
     if (!this.form.dropoffNotes.trim()) {
@@ -879,6 +886,7 @@ export class DonationWizardPageComponent {
     this.selectedDate = state.selectedDate;
     this.selectedTime = state.selectedTime;
     this.submitted = state.submitted;
+    this.ensureMethodDefaults();
   }
 
   private snapshotState(): DonationWizardState {
