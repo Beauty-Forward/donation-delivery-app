@@ -458,6 +458,10 @@ export class DonationWizardPageComponent {
       return;
     }
 
+    if (!this.validateDropoffTime()) {
+      return;
+    }
+
     const next = this.afterDetailsStep;
 
     if (next === 4) {
@@ -779,6 +783,17 @@ export class DonationWizardPageComponent {
 
     if (!amount || Number.isNaN(amount) || amount < 5) {
       errors['donation'] = 'Minimum donation is $5';
+    }
+
+    this.errors = errors;
+    return Object.keys(errors).length === 0;
+  }
+
+  private validateDropoffTime(): boolean {
+    const errors: Record<string, string> = {};
+
+    if (!this.form.dropoffNotes.trim()) {
+      errors['dropoffNotes'] = 'Tell us when you plan to come';
     }
 
     this.errors = errors;
