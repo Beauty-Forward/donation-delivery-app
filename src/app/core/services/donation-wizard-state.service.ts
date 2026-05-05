@@ -14,6 +14,7 @@ export interface WizardFormState {
   borough: string;
   zip: string;
   courierNotes: string;
+  dropoffNotes: string;
 }
 
 export interface DonationWizardState {
@@ -40,7 +41,8 @@ export const DEFAULT_WIZARD_FORM_STATE: WizardFormState = {
   city: '',
   borough: '',
   zip: '',
-  courierNotes: ''
+  courierNotes: '',
+  dropoffNotes: '',
 };
 
 export const DEFAULT_DONATION_WIZARD_STATE: DonationWizardState = {
@@ -53,11 +55,11 @@ export const DEFAULT_DONATION_WIZARD_STATE: DonationWizardState = {
   customAmount: '',
   selectedDate: null,
   selectedTime: null,
-  submitted: false
+  submitted: false,
 };
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class DonationWizardStateService {
   private readonly storageKey = 'beauty-forward.donationWizard';
@@ -79,8 +81,8 @@ export class DonationWizardStateService {
         ...parsed,
         form: {
           ...DEFAULT_WIZARD_FORM_STATE,
-          ...(parsed.form ?? {})
-        }
+          ...(parsed.form ?? {}),
+        },
       };
     } catch {
       return this.cloneDefault();
@@ -106,7 +108,7 @@ export class DonationWizardStateService {
   private cloneDefault(): DonationWizardState {
     return {
       ...DEFAULT_DONATION_WIZARD_STATE,
-      form: { ...DEFAULT_WIZARD_FORM_STATE }
+      form: { ...DEFAULT_WIZARD_FORM_STATE },
     };
   }
 }

@@ -246,6 +246,31 @@
               <p class="field-error spacing-top">{{ errors['packageSize'] }}</p>
             }
 
+            @if (deliveryMethod === 'dropoff') {
+              <div class="notice-card spacing-top hours-notice">
+                <p>Only available Tuesdays and Thursdays, 10-4 ET</p>
+              </div>
+              <div>
+                <form class="user-notes">
+                  <label class="section-eyebrow spacing-top-lg" for="dropoff-notes"
+                    >What time do you want to come by?</label
+                  >
+                  <textarea
+                    id="dropoff-notes"
+                    name="dropoff-notes"
+                    rows="2"
+                    placeholder="Let us know when during available hours you'd like to come by so we can expect you. Ex. 'Tuesday 4/4 at 4pm'"
+                    [ngModel]="form.dropoffNotes"
+                    (ngModelChange)="updateField('dropoffNotes', $event)"
+                    [class.invalid]="!!errors['dropoffNotes']"
+                  ></textarea>
+                  @if (errors['dropoffNotes']) {
+                    <p class="field-error spacing-top">{{ errors['dropoffNotes'] }}</p>
+                  }
+                </form>
+              </div>
+            }
+
             @if (deliveryMethod === 'courier') {
               <p class="section-eyebrow spacing-top-lg">Pickup Address</p>
 
@@ -365,7 +390,7 @@
             }
 
             <div>
-              <form class="courier-notes">
+              <form class="user-notes">
                 <label class="section-eyebrow spacing-top-lg" for="courier-notes"
                   >Notes for the courier</label
                 >
@@ -522,10 +547,6 @@
                   <span>{{ entry.text }}</span>
                 </div>
               }
-            </div>
-
-            <div class="notice-card spacing-top">
-              <p>No appointment needed. Just walk in during business hours.</p>
             </div>
 
             <div class="wizard-nav">

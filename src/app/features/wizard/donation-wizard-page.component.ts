@@ -127,7 +127,8 @@ export class DonationWizardPageComponent {
     {
       id: 'dropoff',
       title: 'Drop Off',
-      description: 'Bring your donation to our Brooklyn warehouse during business hours. Free.',
+      description:
+        'Bring your donation to our Brooklyn warehouse during business hours. Available Tuesdays and Thursdays. Free.',
     },
     {
       id: 'ship',
@@ -298,15 +299,18 @@ export class DonationWizardPageComponent {
     }
 
     if (this.deliveryMethod === 'dropoff') {
-      sections.push({
-        label: this.warehouse.name,
-        lines: [
-          this.warehouse.line1,
-          this.warehouse.line2,
-          `${this.warehouse.city}, ${this.warehouse.state} ${this.warehouse.zip}`,
-          this.warehouse.hours,
-        ],
-      });
+      sections.push(
+        {
+          label: this.warehouse.name,
+          lines: [
+            this.warehouse.line1,
+            this.warehouse.line2,
+            `${this.warehouse.city}, ${this.warehouse.state} ${this.warehouse.zip}`,
+            this.warehouse.hours,
+          ],
+        },
+        { label: 'Dropoff Notes', lines: [this.form.dropoffNotes] },
+      );
     }
 
     if (this.deliveryMethod === 'ship') {
@@ -454,6 +458,10 @@ export class DonationWizardPageComponent {
       return;
     }
 
+    if (!this.validateDropoffTime()) {
+      return;
+    }
+
     const next = this.afterDetailsStep;
 
     if (next === 4) {
@@ -526,8 +534,8 @@ export class DonationWizardPageComponent {
       this.deliveryMethod === 'courier'
         ? 'pickup'
         : this.deliveryMethod === 'dropoff'
-        ? 'dropoff'
-        : 'shipping';
+          ? 'dropoff'
+          : 'shipping';
 
     // The wizard collects firstName + lastName separately; the backend
     // donor schema uses fullName, so reassemble.
@@ -588,6 +596,7 @@ export class DonationWizardPageComponent {
         preferredTimeWindow: 'flexible',
         locationName: this.warehouseConfig.destination.name,
         locationAddress: warehouseAddress,
+        dropoffNotes: this.form.dropoffNotes || undefined,
       };
     } else {
       // Shipping: the wizard doesn't currently collect a return/sender
@@ -774,6 +783,17 @@ export class DonationWizardPageComponent {
 
     if (!amount || Number.isNaN(amount) || amount < 5) {
       errors['donation'] = 'Minimum donation is $5';
+    }
+
+    this.errors = errors;
+    return Object.keys(errors).length === 0;
+  }
+
+  private validateDropoffTime(): boolean {
+    const errors: Record<string, string> = {};
+
+    if (!this.form.dropoffNotes.trim()) {
+      errors['dropoffNotes'] = 'Tell us when you plan to come';
     }
 
     this.errors = errors;

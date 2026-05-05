@@ -486,6 +486,16 @@
   }
 }
 
+.hours-notice {
+  text-align: center;
+  border: 3px solid var(--border);
+  background-color: var(--eucalyptus);
+}
+
+.hours-notice p {
+  color: var(--green);
+}
+
 .time-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -640,13 +650,13 @@
   margin-top: 0.5rem;
 }
 
-.courier-notes {
+.user-notes {
   display: flex;
   gap: 0.6rem;
   flex-direction: column;
 }
 
-.courier-notes textarea {
+.user-notes textarea {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 0.65rem;
