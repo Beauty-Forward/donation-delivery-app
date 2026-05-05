@@ -247,7 +247,9 @@
             }
 
             @if (deliveryMethod === 'dropoff') {
-              <div class="hours-notice"><p>Only available Tuesdays and Thursdays, 10-4 ET</p></div>
+              <div class="notice-card spacing-top hours-notice">
+                <p>Only available Tuesdays and Thursdays, 10-4 ET</p>
+              </div>
               <div>
                 <form class="courier-notes">
                   <label class="section-eyebrow spacing-top-lg" for="courier-notes"
@@ -545,10 +547,6 @@
                   <span>{{ entry.text }}</span>
                 </div>
               }
-            </div>
-
-            <div class="notice-card spacing-top">
-              <p>No appointment needed. Just walk in during business hours.</p>
             </div>
 
             <div class="wizard-nav">
