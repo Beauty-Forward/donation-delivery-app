@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onRequest } from 'firebase-functions/v2/https';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { SchemaType, VertexAI } from '@google-cloud/vertexai';
 import {
   CreateContributionSessionPayload,
@@ -13,10 +14,12 @@ import { MockRoadieCourierProvider } from './providers/mock-roadie-provider.js';
 import { MockShippingLabelProvider } from './providers/mock-shipping-label-provider.js';
 import { GivebutterService } from './services/givebutter.service.js';
 import { HubspotService } from './services/hubspot.service.js';
+import { ResendEmailService } from './services/resend.service.js';
 import { generateDropoffReference } from './utils/dropoff-reference.js';
 import {
   createContributionSessionSchema,
-  createDonationRequestSchema
+  createDonationRequestSchema,
+  PICKUP_DONATION_MIN_USD
 } from './validators.js';
 
 initializeApp();
@@ -31,6 +34,7 @@ const courierProvider = new MockRoadieCourierProvider();
 const shippingLabelProvider = new MockShippingLabelProvider();
 const givebutterService = new GivebutterService();
 const hubspotService = new HubspotService();
+const resendEmailService = new ResendEmailService();
 
 export const createDonationRequest = onCall({ region: 'us-central1' }, async (request) => {
   const parsed = createDonationRequestSchema.safeParse(request.data);
@@ -49,13 +53,14 @@ export const createDonationRequest = onCall({ region: 'us-central1' }, async (re
   let shippingLabelReference: string | undefined;
 
   if (payload.donationType === 'pickup' && payload.pickup) {
-    const dispatch = await courierProvider.dispatchPickup({
-      requestId: requestRef.id,
-      donor: payload.donor,
-      pickup: payload.pickup
-    });
-    status = 'queued_for_dispatch';
-    courierDispatchId = dispatch.dispatchId;
+    // Pickups are gated behind an active server-to-server Givebutter verification.
+    // The verifyContributionAndDispatch onCreate trigger fires immediately on this
+    // doc create — it calls Givebutter's API with the captured gbSessionId, then
+    // dispatches the courier (queued_for_dispatch) on success or marks the request
+    // payment_verification_failed (and emails the donor) on explicit rejection.
+    // If Givebutter API errors transiently the trigger drops to awaiting_payment so
+    // handleGivebutterWebhook stays a viable recovery path.
+    status = 'verifying_payment';
   }
 
   if (payload.donationType === 'shipping' && payload.shipping) {
@@ -157,6 +162,165 @@ export const createContributionSession = onCall({ region: 'us-central1' }, async
   return givebutterService.createCheckoutSession(payload);
 });
 
+// Authoritative pickup payment gate. Fires on every donation_requests doc create.
+// For pickup, looks up Givebutter transactions by donor email + recency window,
+// dispatches the courier on success, marks payment_verification_failed (and emails
+// the donor) on explicit rejection, or drops to awaiting_payment if Givebutter API
+// errors so ops can rescue. Non-pickup donations short-circuit immediately.
+//
+// Why email-based lookup instead of sessionId: the Givebutter Widgets SDK doesn't
+// reliably propagate donation.complete events from the iframe to the parent page
+// (especially when Google Pay popups are involved), so we can't capture a sessionId
+// client-side. Donor explicitly clicks "I've completed my donation" in the wizard;
+// we trust the click and verify against Givebutter on the backend.
+export const verifyContributionAndDispatch = onDocumentCreated(
+  { region: 'us-central1', document: 'donation_requests/{requestId}' },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) {
+      return;
+    }
+    const data = snap.data();
+    const requestId = event.params['requestId'];
+
+    if (data['donationType'] !== 'pickup') {
+      return;
+    }
+
+    // Dev escape hatch — set SKIP_GIVEBUTTER_VERIFICATION=true in functions/.env to
+    // treat all pickups as verified. Lets us exercise the dispatch path end-to-end
+    // without paying through the live widget every iteration. Never set this in prod.
+    if (process.env['SKIP_GIVEBUTTER_VERIFICATION'] === 'true') {
+      console.warn('[dev] SKIP_GIVEBUTTER_VERIFICATION is on; auto-verifying pickup', { requestId });
+      try {
+        const dispatch = await courierProvider.dispatchPickup({
+          requestId,
+          donor: data['donor'],
+          pickup: data['pickup']
+        });
+        const update = {
+          status: 'queued_for_dispatch' as DonationStatus,
+          contribution: {
+            ...(data['contribution'] ?? {}),
+            status: 'completed',
+            amountUsd: PICKUP_DONATION_MIN_USD
+          },
+          metadata: {
+            ...(data['metadata'] ?? {}),
+            courierDispatchId: dispatch.dispatchId,
+            verificationTransactionId: 'dev_skip_verification'
+          },
+          updatedAt: Timestamp.now()
+        };
+        await snap.ref.set(update, { merge: true });
+        await db.collection('pickup_requests').doc(requestId).set(update, { merge: true });
+      } catch (err) {
+        console.error('Dev-skip dispatch failed', { requestId, err });
+      }
+      return;
+    }
+
+    const donorEmail: string | undefined = data['donor']?.email;
+    if (!donorEmail) {
+      console.error('Pickup donation_request missing donor.email', { requestId });
+      await snap.ref.set(
+        {
+          status: 'payment_verification_failed',
+          metadata: { ...(data['metadata'] ?? {}), verificationFailureReason: 'missing_donor_email' },
+          updatedAt: Timestamp.now()
+        },
+        { merge: true }
+      );
+      return;
+    }
+
+    const lookbackMinutes = Number(process.env['GIVEBUTTER_DONATION_LOOKBACK_MINUTES'] ?? 30);
+    const verification = await givebutterService.findRecentTransactionForDonor(
+      donorEmail,
+      PICKUP_DONATION_MIN_USD,
+      lookbackMinutes
+    );
+
+    if (verification.kind === 'verified') {
+      try {
+        const dispatch = await courierProvider.dispatchPickup({
+          requestId,
+          donor: data['donor'],
+          pickup: data['pickup']
+        });
+
+        const update = {
+          status: 'queued_for_dispatch' as DonationStatus,
+          contribution: {
+            ...(data['contribution'] ?? {}),
+            status: 'completed',
+            amountUsd: verification.amountUsd
+          },
+          metadata: {
+            ...(data['metadata'] ?? {}),
+            courierDispatchId: dispatch.dispatchId,
+            verificationTransactionId: verification.transactionId
+          },
+          updatedAt: Timestamp.now()
+        };
+
+        await snap.ref.set(update, { merge: true });
+        await db.collection('pickup_requests').doc(requestId).set(update, { merge: true });
+      } catch (err) {
+        // Dispatch threw after a verified payment — leave status alone (verifying_payment)
+        // so the webhook can retry the dispatch. Logged for ops follow-up.
+        console.error('Courier dispatch failed after verification', { requestId, err });
+      }
+      return;
+    }
+
+    if (verification.kind === 'rejected') {
+      await snap.ref.set(
+        {
+          status: 'payment_verification_failed' as DonationStatus,
+          metadata: {
+            ...(data['metadata'] ?? {}),
+            verificationFailureReason: verification.reason,
+            verificationAmountPaid: verification.amountUsd
+          },
+          updatedAt: Timestamp.now()
+        },
+        { merge: true }
+      );
+
+      await resendEmailService
+        .sendDonationIssueEmail({
+          donorEmail: data['donor']?.email ?? '',
+          donorName: data['donor']?.fullName ?? '',
+          requestId,
+          reason: verification.reason,
+          amountPaid: verification.amountUsd,
+          minimumUsd: PICKUP_DONATION_MIN_USD
+        })
+        .catch((err) => console.warn('Resend mock failed', err));
+      return;
+    }
+
+    // verification.kind === 'error' — Givebutter API was unavailable / timed out. Don't
+    // blame the donor; drop to awaiting_payment and let the webhook rescue.
+    console.warn('Givebutter verification errored; falling back to webhook recovery', {
+      requestId,
+      reason: verification.reason
+    });
+    await snap.ref.set(
+      {
+        status: 'awaiting_payment' as DonationStatus,
+        metadata: {
+          ...(data['metadata'] ?? {}),
+          verificationFailureReason: verification.reason
+        },
+        updatedAt: Timestamp.now()
+      },
+      { merge: true }
+    );
+  }
+);
+
 export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
@@ -164,13 +328,35 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
   }
 
   const eventType = typeof req.body?.type === 'string' ? req.body.type : 'unknown';
-  const requestId =
-    typeof req.body?.data?.metadata?.requestId === 'string'
-      ? req.body.data.metadata.requestId
-      : undefined;
+
+  // Resolve the donation_request from the webhook payload. The wizard captures
+  // `gbSessionId` from the embedded widget's donation.complete event and stores it
+  // on `contribution.gbSessionId`; Givebutter echoes the same id in webhook payloads.
+  // Fields vary slightly by event type, so check the common spots.
+  const sessionId: string | undefined =
+    (typeof req.body?.data?.session_id === 'string' && req.body.data.session_id) ||
+    (typeof req.body?.data?.transaction?.session_id === 'string' &&
+      req.body.data.transaction.session_id) ||
+    (typeof req.body?.data?.id === 'string' && req.body.data.id) ||
+    undefined;
 
   // TODO: Validate Givebutter webhook signatures before processing production traffic.
-  if (requestId && eventType.includes('payment')) {
+  if (sessionId && eventType.includes('payment')) {
+    const matches = await db
+      .collection('donation_requests')
+      .where('contribution.gbSessionId', '==', sessionId)
+      .limit(1)
+      .get();
+
+    if (matches.empty) {
+      console.warn('Givebutter webhook had no matching donation_request', { sessionId, eventType });
+      res.status(200).json({ ok: true, matched: false });
+      return;
+    }
+
+    const matchedDoc = matches.docs[0];
+    const requestId = matchedDoc.id;
+
     await db.collection('donation_requests').doc(requestId).set(
       {
         contribution: {
@@ -187,6 +373,72 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
       typeof req.body?.data?.amount === 'number'
         ? req.body.data.amount
         : data?.['contribution']?.amountUsd;
+
+    // Pickup gate: dispatch the courier only after we've confirmed payment >= the minimum.
+    // The webhook is a recovery path now (the verifyContributionAndDispatch trigger is the
+    // primary gate); accept either verifying_payment (trigger never resolved, e.g. function
+    // crashed) or awaiting_payment (trigger explicitly fell back due to a Givebutter API
+    // error). queued_for_dispatch and payment_verification_failed are skipped — terminal.
+    if (
+      data?.['donationType'] === 'pickup' &&
+      (data?.['status'] === 'awaiting_payment' || data?.['status'] === 'verifying_payment') &&
+      typeof completedAmount === 'number' &&
+      completedAmount >= PICKUP_DONATION_MIN_USD
+    ) {
+      try {
+        const dispatch = await courierProvider.dispatchPickup({
+          requestId,
+          donor: data['donor'],
+          pickup: data['pickup']
+        });
+
+        await db.collection('donation_requests').doc(requestId).set(
+          {
+            status: 'queued_for_dispatch',
+            metadata: {
+              ...(data['metadata'] ?? {}),
+              courierDispatchId: dispatch.dispatchId
+            },
+            updatedAt: Timestamp.now()
+          },
+          { merge: true }
+        );
+
+        // Mirror the typed-collection doc so downstream readers stay in sync.
+        await db.collection('pickup_requests').doc(requestId).set(
+          {
+            status: 'queued_for_dispatch',
+            metadata: {
+              ...(data['metadata'] ?? {}),
+              courierDispatchId: dispatch.dispatchId
+            },
+            updatedAt: Timestamp.now()
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.error('Courier dispatch failed after payment confirmation', err);
+      }
+    } else if (
+      data?.['donationType'] === 'pickup' &&
+      (data?.['status'] === 'awaiting_payment' || data?.['status'] === 'verifying_payment') &&
+      (typeof completedAmount !== 'number' || completedAmount < PICKUP_DONATION_MIN_USD)
+    ) {
+      console.warn('Pickup donation below minimum; not dispatching courier', {
+        requestId,
+        completedAmount,
+        minimum: PICKUP_DONATION_MIN_USD
+      });
+    } else if (
+      data?.['donationType'] === 'pickup' &&
+      data?.['status'] === 'payment_verification_failed'
+    ) {
+      // Verification trigger already rejected this; donor was emailed. Manual ops review.
+      console.warn('Webhook arrived for already-failed verification; ignoring', {
+        requestId,
+        completedAmount
+      });
+    }
 
     if (data?.['donor']?.email) {
       const meta = data?.['metadata'] ?? {};

@@ -23,11 +23,12 @@ export interface DonationWizardState {
   consentLiability: boolean;
   deliveryMethod: DeliveryMethod | null;
   form: WizardFormState;
-  donationAmount: number;
-  customAmount: string;
+  gbSessionId: string | null;
+  gbAmountUsd: number | null;
   selectedDate: string | null;
   selectedTime: string | null;
   submitted: boolean;
+  submittedRequestId: string | null;
 }
 
 export const DEFAULT_WIZARD_FORM_STATE: WizardFormState = {
@@ -51,11 +52,12 @@ export const DEFAULT_DONATION_WIZARD_STATE: DonationWizardState = {
   consentLiability: false,
   deliveryMethod: null,
   form: { ...DEFAULT_WIZARD_FORM_STATE },
-  donationAmount: 25,
-  customAmount: '',
+  gbSessionId: null,
+  gbAmountUsd: null,
   selectedDate: null,
   selectedTime: null,
   submitted: false,
+  submittedRequestId: null,
 };
 
 @Injectable({

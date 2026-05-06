@@ -248,7 +248,7 @@
 
             @if (deliveryMethod === 'dropoff') {
               <div class="notice-card spacing-top hours-notice">
-                <p>Only available Tuesdays and Thursdays, 10-4 ET</p>
+                <p>Only available Tuesdays and Thursdays, 9-6 ET</p>
               </div>
               <div>
                 <form class="user-notes">
@@ -480,8 +480,8 @@
             <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
             <h2>Support our mission</h2>
             <p class="pane-subtitle">
-              A <strong>$25 donation</strong> covers the full cost of your courier pickup. Any
-              amount from $5 helps us keep going.
+              A <strong>${{ pickupDonationMin }} minimum donation</strong> is required to schedule a
+              courier pickup. $25 covers the full cost.
             </p>
 
             <div class="givebutter-wrapper">
@@ -496,14 +496,15 @@
             <div>
               <img id="pixel-heart" src="pixel-heart.webp" />
               <p class="pane-note">
-                Beauty Forward is powered by donations. We wouldn't be able to do this without you!
+                Once you've completed your donation in the widget above, click below to continue.
+                We'll confirm with Givebutter on the next step using the email you entered earlier.
               </p>
             </div>
 
             <div class="wizard-nav">
               <button type="button" class="btn btn-secondary" (click)="backTo(3)">← Back</button>
               <button type="button" class="btn btn-primary" (click)="continueFromDonation()">
-                Donate ${{ finalDonationAmount }} →
+                I've completed my donation →
               </button>
             </div>
           </section>
@@ -511,42 +512,74 @@
 
         @case (6) {
           @if (submitted) {
-            <section class="pane pane-submitted">
-              <div class="success-icon">✓</div>
-              <h2>You are all set</h2>
-              <p class="pane-subtitle">
-                Confirmation sent to <strong>{{ form.email }}</strong
-                >.
-                @if (deliveryMethod === 'courier') {
-                  Your driver will arrive on <strong>{{ pickupDateLabel }}</strong> between
-                  <strong>{{ selectedTime }}</strong
+            @if (deliveryMethod === 'courier' && confirmationView === 'verifying') {
+              <section class="pane pane-submitted">
+                <div class="verifying-spinner" aria-label="Confirming donation"></div>
+                <h2>Confirming your donation…</h2>
+                <p class="pane-subtitle">Just a moment while we square things with Givebutter.</p>
+                <img id="pixel-heart" src="pixel-heart.webp" />
+              </section>
+            } @else if (deliveryMethod === 'courier' && confirmationView === 'failed') {
+              <section class="pane pane-submitted pane-failed">
+                <div class="failure-icon">!</div>
+                <h2>Hmm — we couldn't confirm your donation just yet.</h2>
+                <p class="pane-subtitle">
+                  Givebutter didn't send back a receipt we could match to your pickup. We've emailed
+                  you the details so you can finish things up. Questions? Reach us at
+                  <strong>hello@beautyforward.com</strong>.
+                </p>
+
+                <div class="wizard-nav">
+                  <button type="button" class="btn btn-secondary" (click)="restartFromHome()">
+                    Start over
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    (click)="tryAgainFromFailedDonation()"
+                  >
+                    Try again →
+                  </button>
+                </div>
+              </section>
+            } @else {
+              <section class="pane pane-submitted">
+                <div class="success-icon">✓</div>
+                <h2>You are all set</h2>
+                <p class="pane-subtitle">
+                  Confirmation sent to <strong>{{ form.email }}</strong
                   >.
-                }
-                @if (deliveryMethod === 'dropoff') {
-                  Visit our warehouse at your convenience during business hours.
-                }
-                @if (deliveryMethod === 'ship') {
-                  Ship your package to our warehouse address below.
-                }
-              </p>
+                  @if (deliveryMethod === 'courier') {
+                    Your driver will arrive on <strong>{{ pickupDateLabel }}</strong> between
+                    <strong>{{ selectedTime }}</strong
+                    >.
+                  }
+                  @if (deliveryMethod === 'dropoff') {
+                    Visit our warehouse at your convenience during business hours.
+                  }
+                  @if (deliveryMethod === 'ship') {
+                    Ship your package to our warehouse address below.
+                  }
+                </p>
 
-              <div class="summary-card compact">
-                @for (row of confirmationRows; track row.label + row.value) {
-                  <div class="summary-item row">
-                    <span class="summary-label">{{ row.label }}</span>
-                    <span class="summary-line">{{ row.value }}</span>
-                  </div>
+                <div class="summary-card compact">
+                  @for (row of confirmationRows; track row.label + row.value) {
+                    <div class="summary-item row">
+                      <span class="summary-label">{{ row.label }}</span>
+                      <span class="summary-line">{{ row.value }}</span>
+                    </div>
+                  }
+                </div>
+
+                @if (deliveryMethod === 'courier') {
+                  <div class="roadie-inline">Tracking link sent to your email</div>
                 }
-              </div>
 
-              @if (deliveryMethod === 'courier') {
-                <div class="roadie-inline">Tracking link sent to your email</div>
-              }
-
-              <button type="button" class="btn btn-primary" (click)="restartFromHome()">
-                Start Another Donation
-              </button>
-            </section>
+                <button type="button" class="btn btn-primary" (click)="restartFromHome()">
+                  Start Another Donation
+                </button>
+              </section>
+            }
           } @else {
             <section class="pane">
               <p class="step-label">{{ displayStep + 1 }} / {{ totalSteps }}</p>
@@ -565,11 +598,25 @@
               </div>
 
               <div class="wizard-nav">
-                <button type="button" class="btn btn-secondary" (click)="backFromReview()">
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  [disabled]="isSubmitting"
+                  (click)="backFromReview()"
+                >
                   ← Back
                 </button>
-                <button type="button" class="btn btn-primary" (click)="confirmDonation()">
-                  Confirm →
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  [disabled]="isSubmitting"
+                  (click)="confirmDonation()"
+                >
+                  @if (isSubmitting) {
+                    Submitting…
+                  } @else {
+                    Confirm →
+                  }
                 </button>
               </div>
             </section>
