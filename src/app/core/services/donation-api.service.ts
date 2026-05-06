@@ -9,40 +9,54 @@ import {
   DonationRequestDocument,
   DonationStatus,
   DonationSubmissionResult,
-  DonationType
+  DonationType,
 } from '../models/donation.models';
 import { FirebaseClientService } from './firebase-client.service';
 import { WarehouseConfigService } from './warehouse-config.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class DonationApiService {
   constructor(
     private readonly firebaseClient: FirebaseClientService,
-    private readonly warehouseConfig: WarehouseConfigService
+    private readonly warehouseConfig: WarehouseConfigService,
   ) {}
 
-  async createDonationRequest(payload: CreateDonationRequestPayload): Promise<DonationSubmissionResult> {
+  async createDonationRequest(
+    payload: CreateDonationRequestPayload,
+  ): Promise<DonationSubmissionResult> {
     try {
+      // 15s timeout (default is 70s). If the function is having a bad day — cold start,
+      // HubSpot stalled, network blip — fall through to the local Firestore fallback
+      // rather than freezing the donor on the Confirm button.
       const callable = httpsCallable<CreateDonationRequestPayload, DonationSubmissionResult>(
         this.firebaseClient.functions,
-        'createDonationRequest'
+        'createDonationRequest',
+        { timeout: 15_000 },
       );
       const result = await callable(payload);
       return result.data;
-    } catch {
+    } catch (err) {
+      // Surface the callable's error so we can see which validator field rejected the
+      // payload (Firebase callables put the message in err.message; sometimes the
+      // server-side detail is in err.details). Without this log, we just see "400" in
+      // Network tab and have no way to debug.
+      console.warn(
+        'createDonationRequest callable failed; falling back to direct Firestore write',
+        err,
+      );
       return this.createDonationRequestFallback(payload);
     }
   }
 
   async createContributionSession(
-    payload: CreateContributionSessionPayload
+    payload: CreateContributionSessionPayload,
   ): Promise<ContributionSessionResponse> {
     try {
       const callable = httpsCallable<CreateContributionSessionPayload, ContributionSessionResponse>(
         this.firebaseClient.functions,
-        'createContributionSession'
+        'createContributionSession',
       );
       const result = await callable(payload);
       return result.data;
@@ -50,13 +64,13 @@ export class DonationApiService {
       return {
         provider: 'givebutter',
         sessionId: `gb_mock_${Date.now()}`,
-        checkoutUrl: this.buildFallbackGivebutterUrl(payload.amountUsd)
+        checkoutUrl: this.buildFallbackGivebutterUrl(payload.amountUsd),
       };
     }
   }
 
   private async createDonationRequestFallback(
-    payload: CreateDonationRequestPayload
+    payload: CreateDonationRequestPayload,
   ): Promise<DonationSubmissionResult> {
     const nowIso = new Date().toISOString();
     const status = this.getInitialStatus(payload.donationType);
@@ -69,20 +83,20 @@ export class DonationApiService {
       warehouse: this.warehouseConfig.destination,
       metadata: {
         ...payload.metadata,
-        source: 'frontend_firestore_fallback'
-      }
+        source: 'frontend_firestore_fallback',
+      },
     };
 
     const donationRef = await addDoc(
       collection(this.firebaseClient.firestore, 'donation_requests'),
-      donationDocument
+      donationDocument,
     );
 
     const typedCollectionName = `${payload.donationType}_requests`;
     const typedDocRef = doc(this.firebaseClient.firestore, typedCollectionName, donationRef.id);
     await setDoc(typedDocRef, {
       donationRequestId: donationRef.id,
-      ...donationDocument
+      ...donationDocument,
     });
 
     const dropoffReference =
@@ -96,14 +110,17 @@ export class DonationApiService {
       status,
       createdAt: nowIso,
       dropoffReference,
-      nextSteps: this.buildNextSteps(payload.donationType)
+      nextSteps: this.buildNextSteps(payload.donationType),
     };
   }
 
   private getInitialStatus(type: DonationType): DonationStatus {
     switch (type) {
       case 'pickup':
-        return 'queued_for_dispatch';
+        // Matches the createDonationRequest function path. The verification trigger is
+        // server-only; if we hit this fallback (callable failed), the doc still lands
+        // in verifying_payment and the Givebutter webhook is the only recovery path.
+        return 'verifying_payment';
       case 'shipping':
         return 'pending_label_purchase';
       case 'dropoff':
@@ -117,20 +134,20 @@ export class DonationApiService {
     if (type === 'pickup') {
       return [
         'We will confirm your courier assignment by email and text shortly.',
-        'Please keep your donation packed and accessible during your selected window.'
+        'Please keep your donation packed and accessible during your selected window.',
       ];
     }
 
     if (type === 'shipping') {
       return [
         'We will send shipping label instructions to your email address.',
-        'After shipping, save your receipt so we can trace delivery if needed.'
+        'After shipping, save your receipt so we can trace delivery if needed.',
       ];
     }
 
     return [
       'Bring your items to the warehouse during your selected window.',
-      'Share your drop-off reference at check-in for faster handoff.'
+      'Share your drop-off reference at check-in for faster handoff.',
     ];
   }
 

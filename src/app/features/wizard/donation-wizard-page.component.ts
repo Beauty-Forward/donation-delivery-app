@@ -1,9 +1,11 @@
 import { CommonModule } from '@angular/common';
 import {
   CUSTOM_ELEMENTS_SCHEMA,
+  ChangeDetectorRef,
   Component,
   DestroyRef,
   ElementRef,
+  OnDestroy,
   ViewChild,
   inject,
 } from '@angular/core';
@@ -11,6 +13,7 @@ import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, startWith } from 'rxjs';
+import { Unsubscribe, doc, onSnapshot } from 'firebase/firestore';
 import {
   DEFAULT_WIZARD_FORM_STATE,
   DeliveryMethod,
@@ -19,14 +22,30 @@ import {
   WizardFormState,
 } from '../../core/services/donation-wizard-state.service';
 import { DonationApiService } from '../../core/services/donation-api.service';
+import { FirebaseClientService } from '../../core/services/firebase-client.service';
 import { WarehouseConfigService } from '../../core/services/warehouse-config.service';
 import {
   AddressInfo,
   CreateDonationRequestPayload,
+  DonationStatus,
   DonationType,
 } from '../../core/models/donation.models';
 import { environment } from '../../../environments/environment';
 import { NYC_CITIES, US_STATES } from '../../core/constants/us-states';
+
+// The Givebutter widget script (loaded in src/index.html) installs a global queueing
+// function `window.Givebutter(...)` exposing addEventListener / EVENT constants.
+// See https://docs.givebutter.com/docs/elements-donation-events.
+type GivebutterEventCallback = (donationObj: {
+  sessionId: string;
+  amount?: number;
+  total?: number;
+}) => void;
+type GivebutterGlobal = {
+  (action: 'addEventListener', event: string, cb: GivebutterEventCallback): void;
+  (action: 'removeEventListener', event: string, cb: GivebutterEventCallback): void;
+  EVENT?: { DONATION?: { COMPLETE?: string } };
+};
 
 type RouteMode =
   | 'home'
@@ -82,7 +101,7 @@ interface ConfirmationRow {
   styleUrl: './donation-wizard-page.component.scss',
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
-export class DonationWizardPageComponent {
+export class DonationWizardPageComponent implements OnDestroy {
   @ViewChild('containerRef') private containerRef?: ElementRef<HTMLDivElement>;
 
   private readonly router = inject(Router);
@@ -90,6 +109,12 @@ export class DonationWizardPageComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly donationApi = inject(DonationApiService);
   private readonly warehouseConfig = inject(WarehouseConfigService);
+  private readonly firebaseClient = inject(FirebaseClientService);
+  // The app runs in zoneless mode (NoopNgZone — no zone.js polyfill). Async callbacks
+  // (Firebase onSnapshot, setTimeout continuations) and post-await microtasks don't
+  // automatically trigger change detection. We explicitly call cdr.markForCheck()
+  // after any state mutation that needs to land in the template.
+  private readonly cdr = inject(ChangeDetectorRef);
 
   protected readonly nycCities = NYC_CITIES;
   protected readonly states = US_STATES;
@@ -98,7 +123,7 @@ export class DonationWizardPageComponent {
     { id: 'medium', label: 'Medium', description: 'Fits in the front seat of a car' },
     { id: 'large', label: 'Large', description: 'Fits in the back seat of a car' },
   ];
-  protected readonly donationPresets = [5, 15, 25, 50];
+  protected readonly pickupDonationMin = environment.pickupDonationMinimumUsd;
   protected readonly pickupTimes = [
     '9:00 AM - 11:00 AM',
     '11:00 AM - 1:00 PM',
@@ -168,19 +193,34 @@ export class DonationWizardPageComponent {
   protected consentLiability = false;
   protected deliveryMethod: DeliveryMethod | null = null;
   protected form: WizardFormState = { ...DEFAULT_WIZARD_FORM_STATE };
-  protected donationAmount = 25;
-  protected customAmount = '';
+  protected gbSessionId: string | null = null;
+  protected gbAmountUsd: number | null = null;
+  // True while createDonationRequest is in flight — drives the Confirm button's
+  // disabled/loading state so the donor sees feedback instead of a frozen button.
+  protected isSubmitting = false;
   protected selectedDate: string | null = null;
   protected selectedTime: string | null = null;
   protected submitted = false;
+  protected submittedRequestId: string | null = null;
+  // Drives the courier confirmation page: 'verifying' shows the trust-building stall,
+  // 'success' shows the existing "You are all set" view, 'failed' shows the error pane.
+  // Non-courier flows skip 'verifying' entirely.
+  protected confirmationView: 'verifying' | 'success' | 'failed' = 'verifying';
   protected fadeIn = true;
   protected errors: Record<string, string> = {};
+
+  private gbListenerRegistered = false;
+  private requestStatusUnsubscribe: Unsubscribe | null = null;
+  private confirmationStallTimer: ReturnType<typeof setTimeout> | null = null;
+  // Hard-cap UX wait at 2s. Hard product rule.
+  private readonly CONFIRMATION_STALL_MS = 2000;
 
   constructor() {
     this.applyState(this.stateStore.get());
   }
 
   ngOnInit(): void {
+    this.registerGivebutterListener();
     this.router.events
       .pipe(
         filter((event): event is NavigationEnd => event instanceof NavigationEnd),
@@ -190,8 +230,38 @@ export class DonationWizardPageComponent {
       .subscribe(() => {
         const mode = this.resolveModeFromUrl(this.router.url);
         this.syncToMode(mode);
+        // If the donor lands on /pickup/confirmation directly (refresh, deep link, history),
+        // re-arm the verification UX. The listener handles the terminal-state shortcut so
+        // already-settled docs render the right view immediately without the stall.
+        if (mode === 'pickup-confirmation') {
+          if (this.submittedRequestId) {
+            this.startCourierConfirmationVerification(this.submittedRequestId);
+          } else {
+            // No requestId means the submission failed on both the callable and the
+            // direct-Firestore fallback. We don't have a doc to listen to — skip the
+            // verifying spinner entirely (otherwise the donor stares at it forever)
+            // and show optimistic success. The actual fix for this state is in the
+            // submit path; this is the donor-facing safety net.
+            this.confirmationView = 'success';
+            this.unsubscribeRequestStatus();
+            this.clearConfirmationStallTimer();
+            this.cdr.markForCheck();
+          }
+        }
+        // Non-courier confirmations are always success — no verification or stall.
+        if (mode === 'dropoff-confirmation' || mode === 'shipping-confirmation') {
+          this.confirmationView = 'success';
+          this.unsubscribeRequestStatus();
+          this.clearConfirmationStallTimer();
+          this.cdr.markForCheck();
+        }
         this.persist();
       });
+  }
+
+  ngOnDestroy(): void {
+    this.unsubscribeRequestStatus();
+    this.clearConfirmationStallTimer();
   }
 
   protected get totalSteps(): number {
@@ -223,15 +293,6 @@ export class DonationWizardPageComponent {
 
   protected get progressSegments(): number[] {
     return Array.from({ length: this.totalSteps }, (_, index) => index);
-  }
-
-  protected get finalDonationAmount(): number {
-    const custom = Number(this.customAmount);
-    if (Number.isFinite(custom) && custom > 0) {
-      return custom;
-    }
-
-    return this.donationAmount;
   }
 
   protected get pickupDateLabel(): string {
@@ -295,7 +356,7 @@ export class DonationWizardPageComponent {
         },
         {
           label: 'Donation',
-          lines: [`$${this.finalDonationAmount}`],
+          lines: [this.gbAmountUsd != null ? `$${this.gbAmountUsd}` : 'Pending'],
         },
       );
     }
@@ -361,7 +422,7 @@ export class DonationWizardPageComponent {
         },
         {
           label: 'Donation',
-          value: `$${this.finalDonationAmount}`,
+          value: this.gbAmountUsd != null ? `$${this.gbAmountUsd}` : 'Pending',
         },
       );
     }
@@ -429,20 +490,6 @@ export class DonationWizardPageComponent {
 
   protected toggleConsentLiability(): void {
     this.consentLiability = !this.consentLiability;
-    this.persist();
-  }
-
-  protected setDonationPreset(amount: number): void {
-    this.donationAmount = amount;
-    this.customAmount = '';
-    this.clearError('donation');
-    this.persist();
-  }
-
-  protected setCustomAmount(raw: string): void {
-    this.customAmount = raw;
-    this.donationAmount = 0;
-    this.clearError('donation');
     this.persist();
   }
 
@@ -526,21 +573,47 @@ export class DonationWizardPageComponent {
     void this.transitionRoute('/shipping/review', 6, false);
   }
 
-  protected confirmDonation(): void {
-    if (!this.deliveryMethod) {
+  protected async confirmDonation(): Promise<void> {
+    if (!this.deliveryMethod || this.isSubmitting) {
       return;
     }
 
-    // Fire-and-forget: persist the donation_request server-side (which also
-    // triggers the HubSpot CRM upsert). Errors are logged but do not block
-    // the user from reaching the confirmation screen — the API service
-    // already has a Firestore-direct fallback for callable failures.
-    void this.persistDonation();
+    // Persist the donation_request server-side (also triggers the HubSpot CRM upsert and
+    // the verifyContributionAndDispatch trigger for pickups). The callable can take a few
+    // seconds (cold start, Firestore + HubSpot in critical path); flip isSubmitting so the
+    // Confirm button shows a loading state instead of looking frozen.
+    this.isSubmitting = true;
+    this.cdr.markForCheck();
+    let requestId: string | null = null;
+    try {
+      const result = await this.persistDonation();
+      requestId = result?.requestId ?? null;
+    } catch (err) {
+      console.warn('Failed to persist donation_request from wizard', err);
+    }
+
+    this.submittedRequestId = requestId;
 
     if (this.deliveryMethod === 'courier') {
+      // Pickup: arm verification stall + listener BEFORE navigating, so we don't lose
+      // any snapshot updates that fire while the route is still transitioning.
+      if (requestId) {
+        this.startCourierConfirmationVerification(requestId);
+      } else {
+        // No id (callable failed entirely) — fall back to optimistic success rather than
+        // stranding the donor on a verifying spinner forever.
+        this.confirmationView = 'success';
+        this.cdr.markForCheck();
+      }
       void this.transitionRoute('/pickup/confirmation', 6, true);
+      // We're navigating to a new component instance; isSubmitting on this instance
+      // becomes irrelevant. No need to flip it back.
       return;
     }
+
+    // Dropoff/ship: no verification gate, always go straight to success.
+    this.confirmationView = 'success';
+    this.cdr.markForCheck();
 
     if (this.deliveryMethod === 'dropoff') {
       void this.transitionRoute('/dropoff/confirmation', 6, true);
@@ -550,9 +623,9 @@ export class DonationWizardPageComponent {
     void this.transitionRoute('/shipping/confirmation', 6, true);
   }
 
-  private async persistDonation(): Promise<void> {
+  private async persistDonation(): Promise<{ requestId: string } | null> {
     if (!this.deliveryMethod) {
-      return;
+      return null;
     }
 
     const donationType: DonationType =
@@ -571,6 +644,10 @@ export class DonationWizardPageComponent {
 
     const warehouseAddress = this.warehouseConfig.destination.address;
 
+    // Conditional spreads — Firestore's SDK rejects `undefined` field values outright
+    // (`Unsupported field value: undefined`), and the Cloud Function fallback writes
+    // this same object directly to Firestore. So we omit the field entirely when we
+    // don't have a value, rather than setting it to undefined.
     const payload: CreateDonationRequestPayload = {
       donationType,
       donor: {
@@ -580,12 +657,12 @@ export class DonationWizardPageComponent {
       },
       contribution: {
         provider: 'givebutter',
-        // The wizard renders a Givebutter widget for the actual payment;
-        // we don't yet capture whether the user completed it. Mark as
-        // not_started — the Givebutter webhook will refresh status to
-        // completed once payment lands.
-        status: 'not_started',
-        amountUsd: this.finalDonationAmount,
+        // The donor explicitly attests they completed the donation by clicking through
+        // the wizard's "I've completed my donation" button. Server-side verification
+        // (verifyContributionAndDispatch) confirms against Givebutter's API by donor email.
+        status: this.gbSessionId ? 'checkout_started' : 'not_started',
+        ...(this.gbAmountUsd != null ? { amountUsd: this.gbAmountUsd } : {}),
+        ...(this.gbSessionId ? { gbSessionId: this.gbSessionId } : {}),
       },
       metadata: {
         flowVersion: 'wizard-v1',
@@ -623,11 +700,8 @@ export class DonationWizardPageComponent {
       };
     }
 
-    try {
-      await this.donationApi.createDonationRequest(payload);
-    } catch (err) {
-      console.warn('Failed to persist donation_request from wizard', err);
-    }
+    const result = await this.donationApi.createDonationRequest(payload);
+    return { requestId: result.requestId };
   }
 
   private buildDonorAddress(city: string, state: string): AddressInfo {
@@ -797,15 +871,14 @@ export class DonationWizardPageComponent {
   }
 
   private validateDonation(): boolean {
-    const amount = this.finalDonationAmount;
-    const errors: Record<string, string> = {};
-
-    if (!amount || Number.isNaN(amount) || amount < 5) {
-      errors['donation'] = 'Minimum donation is $5';
-    }
-
-    this.errors = errors;
-    return Object.keys(errors).length === 0;
+    // No client-side gate. The Givebutter Widgets SDK doesn't reliably surface a
+    // donation.complete event to our parent page (especially through Google Pay
+    // popups), so we trust the donor's "I've completed my donation" click and verify
+    // server-side in verifyContributionAndDispatch using a Givebutter API lookup by
+    // donor email. If they didn't actually donate, the failure pane catches them
+    // within the 2-second confirmation window.
+    this.errors = {};
+    return true;
   }
 
   private validateDropoffTime(): boolean {
@@ -881,11 +954,12 @@ export class DonationWizardPageComponent {
     this.consentLiability = state.consentLiability;
     this.deliveryMethod = state.deliveryMethod;
     this.form = { ...state.form };
-    this.donationAmount = state.donationAmount;
-    this.customAmount = state.customAmount;
+    this.gbSessionId = state.gbSessionId;
+    this.gbAmountUsd = state.gbAmountUsd;
     this.selectedDate = state.selectedDate;
     this.selectedTime = state.selectedTime;
     this.submitted = state.submitted;
+    this.submittedRequestId = state.submittedRequestId;
     this.ensureMethodDefaults();
   }
 
@@ -896,11 +970,12 @@ export class DonationWizardPageComponent {
       consentLiability: this.consentLiability,
       deliveryMethod: this.deliveryMethod,
       form: { ...this.form },
-      donationAmount: this.donationAmount,
-      customAmount: this.customAmount,
+      gbSessionId: this.gbSessionId,
+      gbAmountUsd: this.gbAmountUsd,
       selectedDate: this.selectedDate,
       selectedTime: this.selectedTime,
       submitted: this.submitted,
+      submittedRequestId: this.submittedRequestId,
     };
   }
 
@@ -910,13 +985,169 @@ export class DonationWizardPageComponent {
     this.consentLiability = false;
     this.deliveryMethod = null;
     this.form = { ...DEFAULT_WIZARD_FORM_STATE };
-    this.donationAmount = 25;
-    this.customAmount = '';
+    this.gbSessionId = null;
+    this.gbAmountUsd = null;
     this.selectedDate = null;
     this.selectedTime = null;
     this.submitted = false;
+    this.submittedRequestId = null;
+    this.confirmationView = 'verifying';
+    this.isSubmitting = false;
     this.errors = {};
+    this.unsubscribeRequestStatus();
+    this.clearConfirmationStallTimer();
+    this.cdr.markForCheck();
     this.stateStore.clear();
+  }
+
+  private registerGivebutterListener(): void {
+    if (this.gbListenerRegistered) {
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+    // The inline stub in index.html guarantees window.Givebutter is a callable
+    // queueing function from the very first byte of the page, so we don't need
+    // a setTimeout retry here. addEventListener calls registered before the SDK
+    // finishes loading get queued and replayed once the loader boots.
+    const Givebutter = (window as unknown as { Givebutter?: GivebutterGlobal }).Givebutter;
+    if (typeof Givebutter !== 'function') {
+      console.warn('[gb] window.Givebutter not callable; check the inline stub in index.html');
+      return;
+    }
+    // String literal event names — the EVENT.* constants object isn't populated
+    // until well after the bare function exists, so depending on it can race.
+    Givebutter('addEventListener', 'donation.started', this.onGivebutterDonationStarted);
+    Givebutter('addEventListener', 'donation.complete', this.onGivebutterDonationComplete);
+    this.gbListenerRegistered = true;
+    console.info('[gb] listener registered');
+
+    return;
+  }
+
+  private onGivebutterDonationStarted: GivebutterEventCallback = (donationObj) => {
+    // Diagnostic only — confirms the donor reached the donation form. Cheap insurance
+    // while we validate the v3.2 fix; safe to leave on or remove later.
+    console.info('[gb] donation.started', donationObj);
+  };
+
+  private onGivebutterDonationComplete: GivebutterEventCallback = (donationObj) => {
+    // Diagnostic only — the Widgets SDK doesn't reliably fire this from inside the
+    // iframe to the parent page, so we don't gate Continue on it. If it does fire,
+    // we capture the sessionId as a best-effort hint that downstream code can use
+    // (currently unused; retained for forward compatibility).
+    console.info('[gb] donation.complete', donationObj);
+    if (donationObj && typeof donationObj.sessionId === 'string') {
+      this.gbSessionId = donationObj.sessionId;
+      this.gbAmountUsd =
+        typeof donationObj.amount === 'number'
+          ? donationObj.amount
+          : typeof donationObj.total === 'number'
+            ? donationObj.total
+            : null;
+      this.persist();
+    }
+  };
+
+  // Arms the courier-confirmation verification UX:
+  //   - Sets confirmationView to 'verifying' (the stall pane renders).
+  //   - Subscribes to the donation_request doc. The first snapshot may already be in a
+  //     terminal state (refresh / deep link) — handle the shortcut. During the 2s window,
+  //     a flip to queued_for_dispatch ends early in success; a flip to
+  //     payment_verification_failed ends early in failed.
+  //   - Starts a 2s stall timer. On expiry, lock to optimistic success (unless the listener
+  //     already settled to failed).
+  //
+  // After settle, the listener and timer are torn down. The donor doesn't see post-2s
+  // verification flips — by design, the email is the only signal once they've moved on.
+  private startCourierConfirmationVerification(requestId: string): void {
+    this.unsubscribeRequestStatus();
+    this.clearConfirmationStallTimer();
+    this.confirmationView = 'verifying';
+    this.cdr.markForCheck();
+
+    let settled = false;
+    const settleTo = (view: 'success' | 'failed'): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      this.confirmationView = view;
+      this.unsubscribeRequestStatus();
+      this.clearConfirmationStallTimer();
+      // Zoneless app: explicitly trigger change detection so the DOM picks up the new view.
+      this.cdr.markForCheck();
+    };
+
+    const ref = doc(this.firebaseClient.firestore, 'donation_requests', requestId);
+    this.requestStatusUnsubscribe = onSnapshot(
+      ref,
+      (snap) => {
+        const data = snap.data() as { status?: DonationStatus } | undefined;
+        const status = data?.status;
+        if (!status) {
+          return;
+        }
+        // Refinement 1 / 2: terminal-state and early-success shortcuts.
+        if (status === 'queued_for_dispatch') {
+          settleTo('success');
+        } else if (status === 'payment_verification_failed') {
+          settleTo('failed');
+        }
+      },
+      (err) => {
+        console.warn('donation_request snapshot listener failed', err);
+      },
+    );
+
+    this.confirmationStallTimer = setTimeout(() => {
+      // Optimistic timeout: if no terminal status arrived, show success and let the
+      // backend keep working. If verification later fails, the donor's already gone —
+      // the donation-issue email is the only signal.
+      settleTo('success');
+    }, this.CONFIRMATION_STALL_MS);
+  }
+
+  protected tryAgainFromFailedDonation(): void {
+    // Donor took the "Try again" CTA from the failed-verification pane. Reset the
+    // captured donation handles (they need to redonate via the widget) but keep the
+    // form, schedule, and contact info intact — the wizard state survives in
+    // sessionStorage. Navigate them back to step 5 (donation widget).
+    this.gbSessionId = null;
+    this.gbAmountUsd = null;
+    this.submittedRequestId = null;
+    this.submitted = false;
+    this.confirmationView = 'verifying';
+    this.isSubmitting = false;
+    this.unsubscribeRequestStatus();
+    this.clearConfirmationStallTimer();
+    this.cdr.markForCheck();
+    this.persist();
+    void this.transitionRoute('/pickup', 5, false);
+  }
+
+  private unsubscribeRequestStatus(): void {
+    if (this.requestStatusUnsubscribe) {
+      this.requestStatusUnsubscribe();
+      this.requestStatusUnsubscribe = null;
+    }
+  }
+
+  // private clearConfirmationStallTimer(): void {
+  //   if (this.confirmationStallTimer) {
+  //     clearTimeout(this.confirmationStallTimer);
+  //     this.confirmationStallTimer = null;
+  //   }
+  // }
+  private clearConfirmationStallTimer(): void {
+    console.log(
+      '[clearTimer] called from:\n' + new Error().stack?.split('\n').slice(1, 5).join('\n'),
+    );
+    if (this.confirmationStallTimer) {
+      clearTimeout(this.confirmationStallTimer);
+      this.confirmationStallTimer = null;
+    }
   }
 
   private buildPickupDateOptions(): PickupDateOption[] {

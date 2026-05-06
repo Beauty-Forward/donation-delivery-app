@@ -2,6 +2,9 @@ export type DonationType = 'pickup' | 'shipping' | 'dropoff';
 
 export type DonationStatus =
   | 'submitted'
+  | 'verifying_payment'
+  | 'awaiting_payment'
+  | 'payment_verification_failed'
   | 'queued_for_dispatch'
   | 'dispatch_requested'
   | 'pending_label_purchase'
@@ -29,6 +32,9 @@ export interface ContributionIntent {
   status: 'not_started' | 'checkout_started' | 'completed' | 'skipped';
   amountUsd?: number;
   checkoutUrl?: string;
+  // Set client-side from the Givebutter widget's donation.complete event; used by the
+  // webhook handler to reconcile a payment back to this donation_request.
+  gbSessionId?: string;
 }
 
 export interface PickupDetails {

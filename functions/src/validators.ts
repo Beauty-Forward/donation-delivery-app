@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+// Lowered (e.g. 1) in non-prod via env so the gate is testable without paying $15 each time.
+export const PICKUP_DONATION_MIN_USD = Number(process.env.PICKUP_DONATION_MIN_USD ?? 15);
+
 const addressSchema = z.object({
   line1: z.string().min(3),
   line2: z.string().optional(),
@@ -20,7 +23,8 @@ const contributionSchema = z.object({
   provider: z.literal('givebutter'),
   status: z.enum(['not_started', 'checkout_started', 'completed', 'skipped']),
   amountUsd: z.number().positive().optional(),
-  checkoutUrl: z.string().url().optional()
+  checkoutUrl: z.string().url().optional(),
+  gbSessionId: z.string().min(1).optional()
 });
 
 const pickupSchema = z.object({
@@ -79,6 +83,12 @@ export const createDonationRequestSchema = z
         message: 'Drop-off details are required for drop-off requests.'
       });
     }
+
+    // Note: pickup donation amount and session id used to be enforced here, but the
+    // Givebutter Widgets SDK doesn't reliably surface a sessionId to the parent page,
+    // and the donor doesn't enter the amount in our wizard (the widget owns it). The
+    // gate is enforced server-side by verifyContributionAndDispatch, which queries
+    // Givebutter's API by donor email + amount within the lookback window.
   });
 
 export const createContributionSessionSchema = z.object({

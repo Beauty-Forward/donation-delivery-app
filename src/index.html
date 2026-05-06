@@ -7,6 +7,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- TODO: Replace with Beauty Forward little icon once finalized -->
     <link rel="icon" type="image/svg+xml" href="beauty-forward-wordmark.svg" />
+    <!--
+      Givebutter loader. The inline stub installs window.Givebutter as a queueing
+      function immediately; addEventListener calls made before the async script
+      below finishes loading get queued and replayed once the SDK boots. Without
+      this stub, donation.complete listeners can register too late to fire.
+    -->
+    <script>
+      window.Givebutter =
+        window.Givebutter ||
+        function () {
+          (Givebutter.q = Givebutter.q || []).push(arguments);
+        };
+      Givebutter.l = +new Date();
+    </script>
     <script
       async
       src="https://widgets.givebutter.com/latest.umd.cjs?acct=qR9NH8BGmpHRagga&p=other"

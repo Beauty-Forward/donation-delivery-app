@@ -33,6 +33,7 @@ export const environment = {
       mockCheckoutUrl: 'https://shippo.com',
     },
   },
+  pickupDonationMinimumUsd: 15,
 };
 
 // // Initialize Firebase

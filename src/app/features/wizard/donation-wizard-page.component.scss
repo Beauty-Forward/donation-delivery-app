@@ -584,6 +584,41 @@
   font-size: 1.2rem;
 }
 
+.failure-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  background: var(--cream, #f3efe8);
+  color: var(--ink, #1a1a2e);
+  font-size: 1.6rem;
+  font-weight: 700;
+  border: 1.5px solid var(--ink, #1a1a2e);
+}
+
+.verifying-spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  margin: 0 auto;
+  border: 3px solid var(--border, #ddd8d0);
+  border-top-color: var(--ink, #1a1a2e);
+  animation: verifying-spin 0.9s linear infinite;
+}
+
+@keyframes verifying-spin {
+  to { transform: rotate(360deg); }
+}
+
+.pane-failed {
+  // Tighter spacing on the failure pane — copy is the focus, not the summary card.
+  .pane-subtitle {
+    margin-bottom: 1rem;
+  }
+}
+
 .instruction-number {
   color: #bdbdb8;
   font-size: 0.7rem;
