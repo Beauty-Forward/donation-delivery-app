@@ -97,7 +97,7 @@ export interface ContributionSessionResponse {
 }
 
 export interface CourierDispatchResult {
-  provider: 'mock-roadie';
+  provider: 'roadie' | 'mock-roadie';
   dispatchId: string;
   status: 'queued' | 'assigned';
   etaWindow: string;

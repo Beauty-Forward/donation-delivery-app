@@ -13,7 +13,7 @@ import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, startWith } from 'rxjs';
-import { Unsubscribe, doc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import {
   DEFAULT_WIZARD_FORM_STATE,
   DeliveryMethod,
@@ -210,7 +210,7 @@ export class DonationWizardPageComponent implements OnDestroy {
   protected errors: Record<string, string> = {};
 
   private gbListenerRegistered = false;
-  private requestStatusUnsubscribe: Unsubscribe | null = null;
+  private requestStatusPollHandle: ReturnType<typeof setInterval> | null = null;
   private confirmationStallTimer: ReturnType<typeof setTimeout> | null = null;
   // Hard-cap UX wait at 2s. Hard product rule.
   private readonly CONFIRMATION_STALL_MS = 2000;
@@ -1076,30 +1076,38 @@ export class DonationWizardPageComponent implements OnDestroy {
       this.confirmationView = view;
       this.unsubscribeRequestStatus();
       this.clearConfirmationStallTimer();
-      // Zoneless app: explicitly trigger change detection so the DOM picks up the new view.
-      this.cdr.markForCheck();
+      // Zoneless app (NoopNgZone): markForCheck only flags the component dirty — no
+      // scheduler runs CD for arbitrary callbacks like onSnapshot / setTimeout. Use
+      // detectChanges to run CD synchronously so the success/failed view lands in the
+      // DOM without waiting for an unrelated event.
+      this.cdr.detectChanges();
     };
 
+    // Poll the donation_request doc every 400ms instead of using onSnapshot. The
+    // firebase-js-sdk listen-stream hits an internal-state bug ("ve":-1, see
+    // firebase/firebase-js-sdk#8593) when reconciling listen targets, which crashes
+    // change detection mid-flow. getDoc has no listen target so it sidesteps the bug
+    // entirely. The window is short (≤2s, hard-capped by CONFIRMATION_STALL_MS), so
+    // a handful of reads is fine; if status doesn't flip in time, the stall timer
+    // optimistically settles to success regardless.
     const ref = doc(this.firebaseClient.firestore, 'donation_requests', requestId);
-    this.requestStatusUnsubscribe = onSnapshot(
-      ref,
-      (snap) => {
-        const data = snap.data() as { status?: DonationStatus } | undefined;
-        const status = data?.status;
-        if (!status) {
-          return;
-        }
-        // Refinement 1 / 2: terminal-state and early-success shortcuts.
+    const poll = async (): Promise<void> => {
+      try {
+        const snap = await getDoc(ref);
+        const status = (snap.data() as { status?: DonationStatus } | undefined)?.status;
         if (status === 'queued_for_dispatch') {
           settleTo('success');
         } else if (status === 'payment_verification_failed') {
           settleTo('failed');
         }
-      },
-      (err) => {
-        console.warn('donation_request snapshot listener failed', err);
-      },
-    );
+      } catch (err) {
+        console.warn('donation_request poll failed', err);
+      }
+    };
+    void poll();
+    this.requestStatusPollHandle = setInterval(() => {
+      void poll();
+    }, 400);
 
     this.confirmationStallTimer = setTimeout(() => {
       // Optimistic timeout: if no terminal status arrived, show success and let the
@@ -1128,9 +1136,9 @@ export class DonationWizardPageComponent implements OnDestroy {
   }
 
   private unsubscribeRequestStatus(): void {
-    if (this.requestStatusUnsubscribe) {
-      this.requestStatusUnsubscribe();
-      this.requestStatusUnsubscribe = null;
+    if (this.requestStatusPollHandle) {
+      clearInterval(this.requestStatusPollHandle);
+      this.requestStatusPollHandle = null;
     }
   }
 
