@@ -9,7 +9,7 @@ export const environment = {
     appId: '1:293598087208:web:2119b006c72a18f9720d1d',
     measurementId: 'G-4YWCNPS3GS',
     functionsRegion: 'us-central1',
-    useEmulators: false,
+    useEmulators: true,
   },
   warehouse: {
     name: 'Beauty Forward Warehouse',

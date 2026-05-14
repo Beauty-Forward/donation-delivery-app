@@ -1,0 +1,234 @@
+import { describe, expect, it, vi } from 'vitest';
+import { RoadieCourierProvider, buildShipmentPayload, buildTimeWindow } from './roadie-provider.js';
+import type { CourierDispatchInput } from './courier-provider.js';
+
+type FetchArgs = Parameters<typeof fetch>;
+
+interface MockResponseInit {
+  status?: number;
+  body?: unknown;
+}
+
+function makeResponse({ status = 200, body }: MockResponseInit = {}): Response {
+  return new Response(body == null ? null : JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function makeFetchMock(responses: Array<MockResponseInit>) {
+  const calls: FetchArgs[] = [];
+  let i = 0;
+  const fn = vi.fn(async (...args: FetchArgs): Promise<Response> => {
+    calls.push(args);
+    const next = responses[i++];
+    if (!next) throw new Error(`Unexpected fetch call #${i}`);
+    return makeResponse(next);
+  }) as unknown as typeof fetch;
+  return { fn, calls };
+}
+
+const farFutureInput: CourierDispatchInput = {
+  requestId: 'req_abc123',
+  donor: {
+    fullName: 'Jane Donor',
+    email: 'jane@example.com',
+    phone: '5551234567',
+  },
+  pickup: {
+    pickupAddress: {
+      line1: '123 Main St',
+      line2: 'Apt 4',
+      city: 'Brooklyn',
+      state: 'NY',
+      postalCode: '11201',
+      instructions: 'Leave at door',
+    },
+    preferredDate: '2099-05-20',
+    preferredTimeWindow: '9am-12pm',
+    donationNotes: 'Two boxes of skincare',
+    warehouseAddress: {
+      line1: '789 Warehouse Way',
+      city: 'Queens',
+      state: 'NY',
+      postalCode: '11101',
+    },
+  },
+};
+
+describe('RoadieCourierProvider', () => {
+  it('throws when ROADIE_API_KEY is not configured', async () => {
+    const { fn } = makeFetchMock([]);
+    const provider = new RoadieCourierProvider(
+      '',
+      'https://sandbox.roadie.test/v1',
+      5000,
+      'WH',
+      '5550000000',
+      fn,
+    );
+    await expect(provider.dispatchPickup(farFutureInput)).rejects.toThrow(
+      /ROADIE_API_KEY not configured/,
+    );
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('posts to {base}/shipments with Bearer auth and JSON body', async () => {
+    const { fn, calls } = makeFetchMock([
+      { status: 201, body: { id: 'roadie_dlv_99', status: 'created' } },
+    ]);
+    const provider = new RoadieCourierProvider(
+      'sk_test_123',
+      'https://sandbox.roadie.test/v1',
+      5000,
+      'BF Warehouse',
+      '5559876543',
+      fn,
+    );
+
+    const result = await provider.dispatchPickup(farFutureInput);
+
+    expect(fn).toHaveBeenCalledTimes(1);
+    const [url, init] = calls[0]!;
+    expect(String(url)).toBe('https://sandbox.roadie.test/v1/shipments');
+    const req = init as RequestInit;
+    expect(req.method).toBe('POST');
+    expect(req.headers).toMatchObject({
+      Authorization: 'Bearer sk_test_123',
+      'Content-Type': 'application/json',
+    });
+    expect(result).toEqual({
+      provider: 'roadie',
+      dispatchId: 'roadie_dlv_99',
+      status: 'queued',
+      etaWindow: expect.any(String),
+    });
+  });
+
+  it('maps donor + pickup details into the Roadie request body', async () => {
+    const { fn, calls } = makeFetchMock([{ status: 201, body: { id: 1, status: 'created' } }]);
+    const provider = new RoadieCourierProvider(
+      'sk_test',
+      'https://sandbox.roadie.test/v1',
+      5000,
+      'BF Warehouse',
+      '5559876543',
+      fn,
+    );
+
+    await provider.dispatchPickup(farFutureInput);
+
+    const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
+    expect(body.reference_id).toBe('req_abc123');
+    expect(body.description).toContain('Two boxes of skincare');
+    expect(body.items).toMatchObject([
+      { description: 'Beauty product donation', quantity: 1 },
+    ]);
+    expect(body.pickup_location.address).toEqual({
+      street1: '123 Main St',
+      street2: 'Apt 4',
+      city: 'Brooklyn',
+      state: 'NY',
+      zip: '11201',
+    });
+    expect(body.pickup_location.contact).toEqual({
+      name: 'Jane Donor',
+      phone: '5551234567',
+      email: 'jane@example.com',
+      notes: 'Leave at door',
+    });
+    expect(body.delivery_location.address).toEqual({
+      street1: '789 Warehouse Way',
+      street2: undefined,
+      city: 'Queens',
+      state: 'NY',
+      zip: '11101',
+    });
+    expect(body.delivery_location.contact).toEqual({
+      name: 'BF Warehouse',
+      phone: '5559876543',
+    });
+    expect(typeof body.pickup_after).toBe('string');
+    expect(typeof body.deliver_between.start).toBe('string');
+    expect(typeof body.deliver_between.end).toBe('string');
+  });
+
+  it('returns status=assigned when Roadie says the delivery is assigned', async () => {
+    const { fn } = makeFetchMock([{ status: 200, body: { id: 'd1', status: 'assigned' } }]);
+    const provider = new RoadieCourierProvider(
+      'k',
+      'https://s.test/v1',
+      5000,
+      'W',
+      '5550000000',
+      fn,
+    );
+
+    const r = await provider.dispatchPickup(farFutureInput);
+    expect(r.status).toBe('assigned');
+  });
+
+  it('throws with response body when Roadie returns non-2xx', async () => {
+    const { fn } = makeFetchMock([{ status: 401, body: { error: 'unauthorized' } }]);
+    const provider = new RoadieCourierProvider(
+      'bad',
+      'https://s.test/v1',
+      5000,
+      'W',
+      '5550000000',
+      fn,
+    );
+
+    await expect(provider.dispatchPickup(farFutureInput)).rejects.toThrow(
+      /Roadie create-shipment failed: 401/,
+    );
+  });
+
+  it('throws when Roadie 2xx response has no id', async () => {
+    const { fn } = makeFetchMock([{ status: 200, body: { status: 'created' } }]);
+    const provider = new RoadieCourierProvider(
+      'k',
+      'https://s.test/v1',
+      5000,
+      'W',
+      '5550000000',
+      fn,
+    );
+
+    await expect(provider.dispatchPickup(farFutureInput)).rejects.toThrow(/missing shipment id/);
+  });
+});
+
+describe('buildTimeWindow', () => {
+  it('parses a "9am-12pm" window on a future date', () => {
+    const { start, end } = buildTimeWindow('2099-05-20', '9am-12pm');
+    expect(start.getHours()).toBe(9);
+    expect(end.getHours()).toBe(12);
+  });
+
+  it('parses an "afternoon" label', () => {
+    const { start, end } = buildTimeWindow('2099-05-20', 'Afternoon');
+    expect(start.getHours()).toBe(13);
+    expect(end.getHours()).toBe(17);
+  });
+
+  it('pushes start forward when the window is in the past', () => {
+    const { start, end } = buildTimeWindow('2000-01-01', '9am-12pm');
+    expect(start.getTime()).toBeGreaterThanOrEqual(Date.now());
+    expect(end.getTime()).toBeGreaterThan(start.getTime());
+  });
+});
+
+describe('buildShipmentPayload', () => {
+  it('omits donor notes from description when absent', () => {
+    const input: CourierDispatchInput = {
+      ...farFutureInput,
+      pickup: { ...farFutureInput.pickup, donationNotes: undefined },
+    };
+    const body = buildShipmentPayload(input, {
+      warehouseContactName: 'W',
+      warehouseContactPhone: '5550000000',
+    });
+    expect(body.description).toBe('Beauty Forward donation pickup');
+  });
+});

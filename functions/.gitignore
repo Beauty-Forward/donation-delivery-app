@@ -1,0 +1,7 @@
+# Firebase emulator artifacts
+firebase-debug.log
+firestore-debug.log
+firebase-debug.*.log
+ui-debug.log
+pubsub-debug.log
+*.log

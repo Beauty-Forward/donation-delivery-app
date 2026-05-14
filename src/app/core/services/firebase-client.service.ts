@@ -1,6 +1,11 @@
 import { Injectable } from '@angular/core';
 import { FirebaseApp, getApp, getApps, initializeApp } from 'firebase/app';
-import { Firestore, connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
+import {
+  Firestore,
+  connectFirestoreEmulator,
+  getFirestore,
+  initializeFirestore,
+} from 'firebase/firestore';
 import { Functions, connectFunctionsEmulator, getFunctions } from 'firebase/functions';
 import { environment } from '../../../environments/environment';
 
@@ -14,7 +19,14 @@ export class FirebaseClientService {
 
   constructor() {
     this.app = getApps().length ? getApp() : initializeApp(environment.firebase);
-    this.firestore = getFirestore(this.app);
+    // In emulator mode, force long-polling instead of gRPC/WebChannel streams.
+    // Workaround for a firebase-js-sdk regression that crashes onSnapshot listeners
+    // with "INTERNAL ASSERTION FAILED ... ve:-1" when talking to the Firestore
+    // emulator. See firebase/firebase-js-sdk#8593 and related. initializeFirestore
+    // must be called before any other Firestore call, hence before getFirestore.
+    this.firestore = environment.firebase.useEmulators
+      ? initializeFirestore(this.app, { experimentalForceLongPolling: true })
+      : getFirestore(this.app);
     this.functions = getFunctions(this.app, environment.firebase.functionsRegion);
 
     if (environment.firebase.useEmulators) {

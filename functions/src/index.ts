@@ -1,3 +1,15 @@
+// Force-load functions/.env into process.env at module load. The firebase-functions
+// emulator does not reliably propagate env vars to the worker process; in prod the
+// .env file doesn't exist, so dotenv silently no-ops and Cloud Functions' built-in
+// env handling takes over.
+//
+// Explicit path: dotenv defaults to `${cwd}/.env`, but the emulator runs with cwd at
+// the firebase project root (parent of functions/), so a path-less call would miss
+// our file. We resolve relative to this module — works whether the JS is at lib/ or
+// transpiled elsewhere.
+import { config as loadDotenv } from 'dotenv';
+import { join } from 'path';
+loadDotenv({ path: join(__dirname, '..', '.env') });
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
@@ -10,6 +22,8 @@ import {
   DonationSubmissionResult
 } from './models.js';
 import { MockRoadieCourierProvider } from './providers/mock-roadie-provider.js';
+import { RoadieCourierProvider } from './providers/roadie-provider.js';
+import type { CourierDispatchProvider } from './providers/courier-provider.js';
 import { MockShippingLabelProvider } from './providers/mock-shipping-label-provider.js';
 import { GivebutterService } from './services/givebutter.service.js';
 import { HubspotService } from './services/hubspot.service.js';
@@ -29,7 +43,20 @@ const db = getFirestore();
 // one of which is populated per request — without this, the runTransaction
 // below fails with "Cannot use \"undefined\" as a Firestore value".
 db.settings({ ignoreUndefinedProperties: true });
-const courierProvider = new MockRoadieCourierProvider();
+// Lazy-init: pick real-vs-mock on first dispatch call. Cloud Functions Gen2 (and the
+// emulator) populate process.env per-invocation, not at module load, so a top-level
+// check would always see the mock branch when the worker starts cold.
+let _courierProvider: CourierDispatchProvider | undefined;
+function getCourierProvider(): CourierDispatchProvider {
+  if (_courierProvider) return _courierProvider;
+  _courierProvider = process.env['ROADIE_API_KEY']
+    ? new RoadieCourierProvider()
+    : new MockRoadieCourierProvider();
+  console.info(
+    `[courier] Using ${process.env['ROADIE_API_KEY'] ? 'RoadieCourierProvider' : 'MockRoadieCourierProvider'}`
+  );
+  return _courierProvider;
+}
 const shippingLabelProvider = new MockShippingLabelProvider();
 const givebutterService = new GivebutterService();
 const hubspotService = new HubspotService();
@@ -192,7 +219,7 @@ export const verifyContributionAndDispatch = onDocumentCreated(
     if (process.env['SKIP_GIVEBUTTER_VERIFICATION'] === 'true') {
       console.warn('[dev] SKIP_GIVEBUTTER_VERIFICATION is on; auto-verifying pickup', { requestId });
       try {
-        const dispatch = await courierProvider.dispatchPickup({
+        const dispatch = await getCourierProvider().dispatchPickup({
           requestId,
           donor: data['donor'],
           pickup: data['pickup']
@@ -242,7 +269,7 @@ export const verifyContributionAndDispatch = onDocumentCreated(
 
     if (verification.kind === 'verified') {
       try {
-        const dispatch = await courierProvider.dispatchPickup({
+        const dispatch = await getCourierProvider().dispatchPickup({
           requestId,
           donor: data['donor'],
           pickup: data['pickup']
@@ -385,7 +412,7 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
       completedAmount >= PICKUP_DONATION_MIN_USD
     ) {
       try {
-        const dispatch = await courierProvider.dispatchPickup({
+        const dispatch = await getCourierProvider().dispatchPickup({
           requestId,
           donor: data['donor'],
           pickup: data['pickup']
