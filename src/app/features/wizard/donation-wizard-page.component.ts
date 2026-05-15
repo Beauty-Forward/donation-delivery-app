@@ -113,6 +113,7 @@ export class DonationWizardPageComponent {
   // that needs to land in the template.
   private readonly cdr = inject(ChangeDetectorRef);
 
+  protected readonly bfEmail = environment.email;
   protected readonly nycCities = NYC_CITIES;
   protected readonly states = US_STATES;
   protected readonly packageSizes: PackageOption[] = [
@@ -663,8 +664,11 @@ export class DonationWizardPageComponent {
   // donation_request and the donor still ends up at success or failed.
   private async runPickupVerification(): Promise<void> {
     if (this.confirmationView !== 'verifying') {
-      console.info('[wizard] runPickupVerification: skipped (view already',
-        this.confirmationView, ')');
+      console.info(
+        '[wizard] runPickupVerification: skipped (view already',
+        this.confirmationView,
+        ')',
+      );
       return;
     }
     console.info('[wizard] runPickupVerification: starting API call');

@@ -239,8 +239,8 @@
               }
             </div>
             <p class="pane-note">
-              If your package is larger than this, email us at info@beautyforward.com to schedule
-              your donation.
+              If your package is larger than this, email us at {{ bfEmail }} to schedule your
+              donation.
             </p>
             @if (errors['packageSize']) {
               <p class="field-error spacing-top">{{ errors['packageSize'] }}</p>
@@ -525,8 +525,8 @@
                 <h2>We couldn't confirm your donation.</h2>
                 <p class="pane-subtitle">
                   To schedule a courier pickup we need a ${{ pickupDonationMin }} donation through
-                  Givebutter. Click <strong>Try again →</strong> to complete your donation, then
-                  resubmit. Questions? Reach us at <strong>hello@beautyforward.com</strong>.
+                  Givebutter. <br />Click <strong>Try again</strong> to complete your donation, then
+                  resubmit. <br />Questions? Reach us at <strong>{{ bfEmail }}</strong>
                 </p>
 
                 <div class="wizard-nav">
