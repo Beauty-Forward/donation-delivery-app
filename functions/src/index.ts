@@ -30,6 +30,7 @@ import { HubspotService } from './services/hubspot.service.js';
 import { ResendEmailService } from './services/resend.service.js';
 import { verifyAndDispatchPickup } from './services/dispatch.service.js';
 import { generateDropoffReference } from './utils/dropoff-reference.js';
+import { WAREHOUSE_ADDRESS } from './constants/warehouse.js';
 import {
   createContributionSessionSchema,
   createDonationRequestSchema,
@@ -62,6 +63,27 @@ const shippingLabelProvider = new MockShippingLabelProvider();
 const givebutterService = new GivebutterService();
 const hubspotService = new HubspotService();
 const resendEmailService = new ResendEmailService();
+
+// Send a confirmation email at most once per donation_request. Keeps the
+// three pickup trigger paths (callable / onCreate trigger / Givebutter webhook)
+// from each emailing the same donor when they happen to overlap, and survives
+// function retries. Read-then-write is non-transactional on purpose: a duplicate
+// would only be wasted bandwidth, and all callers wrap us in their own happy-path
+// flow, so we swallow send failures rather than propagate them.
+async function sendConfirmationOnce(
+  requestId: string,
+  send: () => Promise<void>
+): Promise<void> {
+  const ref = db.collection('donation_requests').doc(requestId);
+  const snap = await ref.get();
+  if (snap.data()?.['confirmationEmailSentAt']) return;
+  try {
+    await send();
+    await ref.set({ confirmationEmailSentAt: Timestamp.now() }, { merge: true });
+  } catch (err) {
+    console.warn('Confirmation email send failed', { requestId, err });
+  }
+}
 
 export const createDonationRequest = onCall(
   { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' },
@@ -135,6 +157,36 @@ export const createDonationRequest = onCall(
     });
   });
 
+  // Shipping + dropoff have no async verification step — the doc create *is* the
+  // success moment, so email the donor here. Pickup waits until verification +
+  // dispatch resolves below.
+  if (payload.donationType === 'shipping' && payload.shipping) {
+    await sendConfirmationOnce(requestRef.id, () =>
+      resendEmailService.sendShippingConfirmationEmail({
+        donor: payload.donor,
+        requestId: requestRef.id,
+        status: 'pending_label_purchase',
+        shipping: payload.shipping!,
+        shippingLabelReference,
+        warehouseAddress: WAREHOUSE_ADDRESS,
+        nextSteps: buildNextSteps('shipping')
+      })
+    );
+  }
+
+  if (payload.donationType === 'dropoff' && payload.dropoff) {
+    await sendConfirmationOnce(requestRef.id, () =>
+      resendEmailService.sendDropoffConfirmationEmail({
+        donor: payload.donor,
+        requestId: requestRef.id,
+        status: 'dropoff_requested',
+        dropoff: payload.dropoff!,
+        dropoffReference,
+        nextSteps: buildNextSteps('dropoff')
+      })
+    );
+  }
+
   // For pickups, gate the response on real Givebutter verification + Roadie dispatch
   // so the donor sees the actual outcome on the confirmation page (not an optimistic
   // "verifying" state). The verifyContributionAndDispatch trigger still runs on the
@@ -188,6 +240,19 @@ export const createDonationRequest = onCall(
         merge: true
       });
     });
+
+    if (verification.status === 'queued_for_dispatch') {
+      await sendConfirmationOnce(requestRef.id, () =>
+        resendEmailService.sendPickupConfirmationEmail({
+          donor: payload.donor,
+          requestId: requestRef.id,
+          status: 'queued_for_dispatch',
+          pickup: payload.pickup!,
+          courierDispatchId,
+          nextSteps: buildNextSteps('pickup')
+        })
+      );
+    }
   }
 
   const metaCity =
@@ -325,6 +390,19 @@ export const verifyContributionAndDispatch = onDocumentCreated(
 
     await snap.ref.set(update, { merge: true });
     await db.collection('pickup_requests').doc(requestId).set(update, { merge: true });
+
+    if (verification.status === 'queued_for_dispatch') {
+      await sendConfirmationOnce(requestId, () =>
+        resendEmailService.sendPickupConfirmationEmail({
+          donor: data['donor'],
+          requestId,
+          status: 'queued_for_dispatch',
+          pickup: data['pickup'],
+          courierDispatchId: verification.courierDispatchId,
+          nextSteps: buildNextSteps('pickup')
+        })
+      );
+    }
   }
 );
 
@@ -422,6 +500,17 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
             updatedAt: Timestamp.now()
           },
           { merge: true }
+        );
+
+        await sendConfirmationOnce(requestId, () =>
+          resendEmailService.sendPickupConfirmationEmail({
+            donor: data['donor'],
+            requestId,
+            status: 'queued_for_dispatch',
+            pickup: data['pickup'],
+            courierDispatchId: dispatch.dispatchId,
+            nextSteps: buildNextSteps('pickup')
+          })
         );
       } catch (err) {
         console.error('Courier dispatch failed after payment confirmation', err);
@@ -568,13 +657,7 @@ export const createWalkInDonation = onCall(
         preferredTimeWindow: 'walk-in',
         dropoffNotes: notes,
         locationName: 'Beauty Forward Warehouse',
-        locationAddress: {
-          line1: '14 53rd St',
-          line2: '#614',
-          city: 'Brooklyn',
-          state: 'NY',
-          postalCode: '11232',
-        },
+        locationAddress: WAREHOUSE_ADDRESS,
         referenceCode: dropoffReference,
       },
       status: 'dropoff_requested' satisfies DonationStatus,
@@ -592,6 +675,17 @@ export const createWalkInDonation = onCall(
         ...baseDoc,
       });
     });
+
+    await sendConfirmationOnce(requestRef.id, () =>
+      resendEmailService.sendDropoffConfirmationEmail({
+        donor: { fullName: donor.fullName, email: donor.email, phone: donor.phone },
+        requestId: requestRef.id,
+        status: 'dropoff_requested',
+        dropoff: baseDoc.dropoff,
+        dropoffReference,
+        nextSteps: buildNextSteps('dropoff'),
+      })
+    );
 
     return {
       requestId: requestRef.id,

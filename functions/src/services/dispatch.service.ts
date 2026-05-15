@@ -82,16 +82,9 @@ export async function verifyAndDispatchPickup(
   }
 
   if (verification.kind === 'rejected') {
-    await deps.resendEmailService
-      .sendDonationIssueEmail({
-        donorEmail: donor.email,
-        donorName: donor.fullName ?? '',
-        requestId,
-        reason: verification.reason,
-        amountPaid: verification.amountUsd,
-        minimumUsd: getPickupDonationMinUsd()
-      })
-      .catch((err) => console.warn('Resend mock failed', err));
+    // The wizard surfaces verification failures in-app, so we don't email the
+    // donor here. ResendEmailService is still threaded through deps because the
+    // success-path confirmation emails are sent by the index.ts callers, not here.
     return {
       status: 'payment_verification_failed',
       failureReason: verification.reason,
