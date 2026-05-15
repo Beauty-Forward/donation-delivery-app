@@ -33,6 +33,7 @@ export const environment = {
       mockCheckoutUrl: 'https://shippo.com',
     },
   },
+  email: 'info@beauty-forward.org',
   pickupDonationMinimumUsd: 15,
 };
 
