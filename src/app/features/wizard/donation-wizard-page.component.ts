@@ -5,7 +5,6 @@ import {
   Component,
   DestroyRef,
   ElementRef,
-  OnDestroy,
   ViewChild,
   inject,
 } from '@angular/core';
@@ -13,8 +12,8 @@ import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, startWith } from 'rxjs';
-import { doc, getDoc } from 'firebase/firestore';
 import {
+  ConfirmationView,
   DEFAULT_WIZARD_FORM_STATE,
   DeliveryMethod,
   DonationWizardState,
@@ -22,12 +21,11 @@ import {
   WizardFormState,
 } from '../../core/services/donation-wizard-state.service';
 import { DonationApiService } from '../../core/services/donation-api.service';
-import { FirebaseClientService } from '../../core/services/firebase-client.service';
 import { WarehouseConfigService } from '../../core/services/warehouse-config.service';
 import {
   AddressInfo,
   CreateDonationRequestPayload,
-  DonationStatus,
+  DonationSubmissionResult,
   DonationType,
 } from '../../core/models/donation.models';
 import { environment } from '../../../environments/environment';
@@ -101,7 +99,7 @@ interface ConfirmationRow {
   styleUrl: './donation-wizard-page.component.scss',
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
-export class DonationWizardPageComponent implements OnDestroy {
+export class DonationWizardPageComponent {
   @ViewChild('containerRef') private containerRef?: ElementRef<HTMLDivElement>;
 
   private readonly router = inject(Router);
@@ -109,11 +107,10 @@ export class DonationWizardPageComponent implements OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
   private readonly donationApi = inject(DonationApiService);
   private readonly warehouseConfig = inject(WarehouseConfigService);
-  private readonly firebaseClient = inject(FirebaseClientService);
   // The app runs in zoneless mode (NoopNgZone — no zone.js polyfill). Async callbacks
-  // (Firebase onSnapshot, setTimeout continuations) and post-await microtasks don't
-  // automatically trigger change detection. We explicitly call cdr.markForCheck()
-  // after any state mutation that needs to land in the template.
+  // and post-await microtasks don't automatically trigger change detection. We
+  // explicitly call cdr.markForCheck()/detectChanges() after any state mutation
+  // that needs to land in the template.
   private readonly cdr = inject(ChangeDetectorRef);
 
   protected readonly nycCities = NYC_CITIES;
@@ -202,18 +199,24 @@ export class DonationWizardPageComponent implements OnDestroy {
   protected selectedTime: string | null = null;
   protected submitted = false;
   protected submittedRequestId: string | null = null;
-  // Drives the courier confirmation page: 'verifying' shows the trust-building stall,
-  // 'success' shows the existing "You are all set" view, 'failed' shows the error pane.
-  // Non-courier flows skip 'verifying' entirely.
-  protected confirmationView: 'verifying' | 'success' | 'failed' = 'verifying';
+  // Drives the courier confirmation page: 'verifying' renders the spinner pane while
+  // createDonationRequest is in flight, 'success' renders "You are all set" with the
+  // verified donation amount, 'failed' renders the error pane with a Try-again CTA
+  // back to the donation widget. Non-courier flows skip 'verifying' entirely.
+  protected confirmationView: ConfirmationView = 'verifying';
+  // Amount Givebutter actually confirmed — surfaced on the success pane. Distinct
+  // from gbAmountUsd, which is the donor's intended amount captured client-side and
+  // can be wrong/missing because the widget event doesn't always propagate.
+  protected verifiedAmountUsd: number | null = null;
   protected fadeIn = true;
   protected errors: Record<string, string> = {};
 
   private gbListenerRegistered = false;
-  private requestStatusPollHandle: ReturnType<typeof setInterval> | null = null;
-  private confirmationStallTimer: ReturnType<typeof setTimeout> | null = null;
-  // Hard-cap UX wait at 2s. Hard product rule.
-  private readonly CONFIRMATION_STALL_MS = 2000;
+  // Single-fire guard for runPickupVerification. Replaces a previous brittle
+  // dependency on isSubmitting (which can be either true or false depending on
+  // whether Angular destroys/recreates this component during nav vs reuses it).
+  // Reset by reset() and tryAgainFromFailedDonation so retries can fire again.
+  private pickupVerificationStarted = false;
 
   constructor() {
     this.applyState(this.stateStore.get());
@@ -229,39 +232,57 @@ export class DonationWizardPageComponent implements OnDestroy {
       )
       .subscribe(() => {
         const mode = this.resolveModeFromUrl(this.router.url);
+        console.info('[wizard] router event:', {
+          url: this.router.url,
+          mode,
+          confirmationView: this.confirmationView,
+          isSubmitting: this.isSubmitting,
+          deliveryMethod: this.deliveryMethod,
+          formEmail: this.form.email,
+          pickupVerificationStarted: this.pickupVerificationStarted,
+        });
         this.syncToMode(mode);
-        // If the donor lands on /pickup/confirmation directly (refresh, deep link, history),
-        // re-arm the verification UX. The listener handles the terminal-state shortcut so
-        // already-settled docs render the right view immediately without the stall.
+        // /pickup/confirmation: confirmDonation() on the previous instance just
+        // navigates here with confirmationView='verifying' persisted. THIS instance
+        // (whether freshly mounted or reused by Angular) owns the actual API call
+        // so the spinner pane and the in-flight promise live together.
         if (mode === 'pickup-confirmation') {
-          if (this.submittedRequestId) {
-            this.startCourierConfirmationVerification(this.submittedRequestId);
+          console.info('[wizard] /pickup/confirmation reached', {
+            view: this.confirmationView,
+            isSubmitting: this.isSubmitting,
+            method: this.deliveryMethod,
+            email: this.form.email,
+            pickupVerificationStarted: this.pickupVerificationStarted,
+          });
+          if (this.confirmationView === 'verifying' && !this.pickupVerificationStarted) {
+            if (this.deliveryMethod === 'courier' && this.form.email) {
+              console.info('[wizard] kicking off runPickupVerification');
+              this.pickupVerificationStarted = true;
+              void this.runPickupVerification();
+            } else {
+              // Cold landing on /pickup/confirmation with no draft. Show the
+              // failure pane so the donor has a path back via Try again.
+              console.info('[wizard] cold landing — showing failed', {
+                method: this.deliveryMethod,
+                email: this.form.email,
+              });
+              this.confirmationView = 'failed';
+              this.cdr.markForCheck();
+            }
           } else {
-            // No requestId means the submission failed on both the callable and the
-            // direct-Firestore fallback. We don't have a doc to listen to — skip the
-            // verifying spinner entirely (otherwise the donor stares at it forever)
-            // and show optimistic success. The actual fix for this state is in the
-            // submit path; this is the donor-facing safety net.
-            this.confirmationView = 'success';
-            this.unsubscribeRequestStatus();
-            this.clearConfirmationStallTimer();
-            this.cdr.markForCheck();
+            console.info('[wizard] verifying-trigger skipped', {
+              view: this.confirmationView,
+              alreadyStarted: this.pickupVerificationStarted,
+            });
           }
         }
-        // Non-courier confirmations are always success — no verification or stall.
+        // Non-courier confirmations are always success — no verification gate.
         if (mode === 'dropoff-confirmation' || mode === 'shipping-confirmation') {
           this.confirmationView = 'success';
-          this.unsubscribeRequestStatus();
-          this.clearConfirmationStallTimer();
           this.cdr.markForCheck();
         }
         this.persist();
       });
-  }
-
-  ngOnDestroy(): void {
-    this.unsubscribeRequestStatus();
-    this.clearConfirmationStallTimer();
   }
 
   protected get totalSteps(): number {
@@ -411,6 +432,16 @@ export class DonationWizardPageComponent implements OnDestroy {
     ];
 
     if (this.deliveryMethod === 'courier') {
+      // Prefer the verified amount from the callable (server confirmed this was paid).
+      // gbAmountUsd is the donor's intended amount captured from the widget event,
+      // which is unreliable (event doesn't always propagate from the iframe). Only
+      // falls back to it on the review step before submission.
+      const donationValue =
+        this.verifiedAmountUsd != null
+          ? `$${this.verifiedAmountUsd}`
+          : this.gbAmountUsd != null
+            ? `$${this.gbAmountUsd}`
+            : 'Pending';
       rows.push(
         {
           label: 'When',
@@ -422,7 +453,7 @@ export class DonationWizardPageComponent implements OnDestroy {
         },
         {
           label: 'Donation',
-          value: this.gbAmountUsd != null ? `$${this.gbAmountUsd}` : 'Pending',
+          value: donationValue,
         },
       );
     }
@@ -574,45 +605,46 @@ export class DonationWizardPageComponent implements OnDestroy {
   }
 
   protected async confirmDonation(): Promise<void> {
+    console.info('[wizard] confirmDonation: clicked', {
+      deliveryMethod: this.deliveryMethod,
+      isSubmitting: this.isSubmitting,
+    });
     if (!this.deliveryMethod || this.isSubmitting) {
       return;
     }
 
-    // Persist the donation_request server-side (also triggers the HubSpot CRM upsert and
-    // the verifyContributionAndDispatch trigger for pickups). The callable can take a few
-    // seconds (cold start, Firestore + HubSpot in critical path); flip isSubmitting so the
-    // Confirm button shows a loading state instead of looking frozen.
     this.isSubmitting = true;
-    this.cdr.markForCheck();
-    let requestId: string | null = null;
-    try {
-      const result = await this.persistDonation();
-      requestId = result?.requestId ?? null;
-    } catch (err) {
-      console.warn('Failed to persist donation_request from wizard', err);
-    }
-
-    this.submittedRequestId = requestId;
 
     if (this.deliveryMethod === 'courier') {
-      // Pickup: arm verification stall + listener BEFORE navigating, so we don't lose
-      // any snapshot updates that fire while the route is still transitioning.
-      if (requestId) {
-        this.startCourierConfirmationVerification(requestId);
-      } else {
-        // No id (callable failed entirely) — fall back to optimistic success rather than
-        // stranding the donor on a verifying spinner forever.
-        this.confirmationView = 'success';
-        this.cdr.markForCheck();
-      }
-      void this.transitionRoute('/pickup/confirmation', 6, true);
-      // We're navigating to a new component instance; isSubmitting on this instance
-      // becomes irrelevant. No need to flip it back.
+      // Hand off to /pickup/confirmation. Whichever component instance ends up
+      // active there (a fresh mount if Angular destroys/recreates, or this same
+      // instance if Angular reuses) owns the actual API call. The single-fire
+      // flag pickupVerificationStarted prevents double-firing in either case.
+      this.confirmationView = 'verifying';
+      this.verifiedAmountUsd = null;
+      this.submittedRequestId = null;
+      this.pickupVerificationStarted = false;
+      this.persist();
+      console.info('[wizard] confirmDonation: navigating to /pickup/confirmation');
+      await this.transitionRoute('/pickup/confirmation', 6, true);
+      // Reset isSubmitting so a future Try-again retry can fire. If Angular
+      // destroyed this instance during nav, this assignment is a harmless no-op
+      // on the dead reference; if Angular reused this instance, it's necessary.
+      this.isSubmitting = false;
       return;
     }
 
-    // Dropoff/ship: no verification gate, always go straight to success.
+    // Dropoff/ship: no spinner page, no verification gate. Synchronous submit
+    // is fine because we navigate straight to the success page after.
+    let nonCourierResult: DonationSubmissionResult | null = null;
+    try {
+      nonCourierResult = await this.persistDonation();
+    } catch (err) {
+      console.warn('Failed to persist donation_request from wizard', err);
+    }
+    this.submittedRequestId = nonCourierResult?.requestId ?? null;
     this.confirmationView = 'success';
+    this.isSubmitting = false;
     this.cdr.markForCheck();
 
     if (this.deliveryMethod === 'dropoff') {
@@ -623,7 +655,42 @@ export class DonationWizardPageComponent implements OnDestroy {
     void this.transitionRoute('/shipping/confirmation', 6, true);
   }
 
-  private async persistDonation(): Promise<{ requestId: string } | null> {
+  // Owned by the /pickup/confirmation component instance: runs the synchronous
+  // backend verification + Roadie dispatch, then settles the view based on the
+  // real result. Idempotent enough to re-run on refresh-during-spinner — the
+  // server-side Givebutter lookup matches by donor email + recent transaction
+  // window, so a second submission of the same draft just creates an orphan
+  // donation_request and the donor still ends up at success or failed.
+  private async runPickupVerification(): Promise<void> {
+    if (this.confirmationView !== 'verifying') {
+      console.info('[wizard] runPickupVerification: skipped (view already',
+        this.confirmationView, ')');
+      return;
+    }
+    console.info('[wizard] runPickupVerification: starting API call');
+    this.cdr.markForCheck();
+
+    let result: DonationSubmissionResult | null = null;
+    try {
+      result = await this.persistDonation();
+    } catch (err) {
+      console.warn('[wizard] persistDonation threw', err);
+    }
+    console.info('[wizard] persistDonation returned', result);
+
+    this.submittedRequestId = result?.requestId ?? null;
+    if (result?.status === 'queued_for_dispatch') {
+      this.confirmationView = 'success';
+      this.verifiedAmountUsd = result.verifiedAmountUsd ?? null;
+    } else {
+      this.confirmationView = 'failed';
+    }
+    this.persist();
+    // Zoneless: callbacks resumed after async boundaries don't auto-trigger CD.
+    this.cdr.detectChanges();
+  }
+
+  private async persistDonation(): Promise<DonationSubmissionResult | null> {
     if (!this.deliveryMethod) {
       return null;
     }
@@ -700,8 +767,7 @@ export class DonationWizardPageComponent implements OnDestroy {
       };
     }
 
-    const result = await this.donationApi.createDonationRequest(payload);
-    return { requestId: result.requestId };
+    return this.donationApi.createDonationRequest(payload);
   }
 
   private buildDonorAddress(city: string, state: string): AddressInfo {
@@ -960,6 +1026,8 @@ export class DonationWizardPageComponent implements OnDestroy {
     this.selectedTime = state.selectedTime;
     this.submitted = state.submitted;
     this.submittedRequestId = state.submittedRequestId;
+    this.confirmationView = state.confirmationView;
+    this.verifiedAmountUsd = state.verifiedAmountUsd;
     this.ensureMethodDefaults();
   }
 
@@ -976,6 +1044,8 @@ export class DonationWizardPageComponent implements OnDestroy {
       selectedTime: this.selectedTime,
       submitted: this.submitted,
       submittedRequestId: this.submittedRequestId,
+      confirmationView: this.confirmationView,
+      verifiedAmountUsd: this.verifiedAmountUsd,
     };
   }
 
@@ -992,10 +1062,10 @@ export class DonationWizardPageComponent implements OnDestroy {
     this.submitted = false;
     this.submittedRequestId = null;
     this.confirmationView = 'verifying';
+    this.verifiedAmountUsd = null;
     this.isSubmitting = false;
+    this.pickupVerificationStarted = false;
     this.errors = {};
-    this.unsubscribeRequestStatus();
-    this.clearConfirmationStallTimer();
     this.cdr.markForCheck();
     this.stateStore.clear();
   }
@@ -1050,73 +1120,6 @@ export class DonationWizardPageComponent implements OnDestroy {
     }
   };
 
-  // Arms the courier-confirmation verification UX:
-  //   - Sets confirmationView to 'verifying' (the stall pane renders).
-  //   - Subscribes to the donation_request doc. The first snapshot may already be in a
-  //     terminal state (refresh / deep link) — handle the shortcut. During the 2s window,
-  //     a flip to queued_for_dispatch ends early in success; a flip to
-  //     payment_verification_failed ends early in failed.
-  //   - Starts a 2s stall timer. On expiry, lock to optimistic success (unless the listener
-  //     already settled to failed).
-  //
-  // After settle, the listener and timer are torn down. The donor doesn't see post-2s
-  // verification flips — by design, the email is the only signal once they've moved on.
-  private startCourierConfirmationVerification(requestId: string): void {
-    this.unsubscribeRequestStatus();
-    this.clearConfirmationStallTimer();
-    this.confirmationView = 'verifying';
-    this.cdr.markForCheck();
-
-    let settled = false;
-    const settleTo = (view: 'success' | 'failed'): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      this.confirmationView = view;
-      this.unsubscribeRequestStatus();
-      this.clearConfirmationStallTimer();
-      // Zoneless app (NoopNgZone): markForCheck only flags the component dirty — no
-      // scheduler runs CD for arbitrary callbacks like onSnapshot / setTimeout. Use
-      // detectChanges to run CD synchronously so the success/failed view lands in the
-      // DOM without waiting for an unrelated event.
-      this.cdr.detectChanges();
-    };
-
-    // Poll the donation_request doc every 400ms instead of using onSnapshot. The
-    // firebase-js-sdk listen-stream hits an internal-state bug ("ve":-1, see
-    // firebase/firebase-js-sdk#8593) when reconciling listen targets, which crashes
-    // change detection mid-flow. getDoc has no listen target so it sidesteps the bug
-    // entirely. The window is short (≤2s, hard-capped by CONFIRMATION_STALL_MS), so
-    // a handful of reads is fine; if status doesn't flip in time, the stall timer
-    // optimistically settles to success regardless.
-    const ref = doc(this.firebaseClient.firestore, 'donation_requests', requestId);
-    const poll = async (): Promise<void> => {
-      try {
-        const snap = await getDoc(ref);
-        const status = (snap.data() as { status?: DonationStatus } | undefined)?.status;
-        if (status === 'queued_for_dispatch') {
-          settleTo('success');
-        } else if (status === 'payment_verification_failed') {
-          settleTo('failed');
-        }
-      } catch (err) {
-        console.warn('donation_request poll failed', err);
-      }
-    };
-    void poll();
-    this.requestStatusPollHandle = setInterval(() => {
-      void poll();
-    }, 400);
-
-    this.confirmationStallTimer = setTimeout(() => {
-      // Optimistic timeout: if no terminal status arrived, show success and let the
-      // backend keep working. If verification later fails, the donor's already gone —
-      // the donation-issue email is the only signal.
-      settleTo('success');
-    }, this.CONFIRMATION_STALL_MS);
-  }
-
   protected tryAgainFromFailedDonation(): void {
     // Donor took the "Try again" CTA from the failed-verification pane. Reset the
     // captured donation handles (they need to redonate via the widget) but keep the
@@ -1124,38 +1127,15 @@ export class DonationWizardPageComponent implements OnDestroy {
     // sessionStorage. Navigate them back to step 5 (donation widget).
     this.gbSessionId = null;
     this.gbAmountUsd = null;
+    this.verifiedAmountUsd = null;
     this.submittedRequestId = null;
     this.submitted = false;
     this.confirmationView = 'verifying';
     this.isSubmitting = false;
-    this.unsubscribeRequestStatus();
-    this.clearConfirmationStallTimer();
+    this.pickupVerificationStarted = false;
     this.cdr.markForCheck();
     this.persist();
     void this.transitionRoute('/pickup', 5, false);
-  }
-
-  private unsubscribeRequestStatus(): void {
-    if (this.requestStatusPollHandle) {
-      clearInterval(this.requestStatusPollHandle);
-      this.requestStatusPollHandle = null;
-    }
-  }
-
-  // private clearConfirmationStallTimer(): void {
-  //   if (this.confirmationStallTimer) {
-  //     clearTimeout(this.confirmationStallTimer);
-  //     this.confirmationStallTimer = null;
-  //   }
-  // }
-  private clearConfirmationStallTimer(): void {
-    console.log(
-      '[clearTimer] called from:\n' + new Error().stack?.split('\n').slice(1, 5).join('\n'),
-    );
-    if (this.confirmationStallTimer) {
-      clearTimeout(this.confirmationStallTimer);
-      this.confirmationStallTimer = null;
-    }
   }
 
   private buildPickupDateOptions(): PickupDateOption[] {

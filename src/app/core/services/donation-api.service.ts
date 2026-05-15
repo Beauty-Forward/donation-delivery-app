@@ -27,13 +27,15 @@ export class DonationApiService {
     payload: CreateDonationRequestPayload,
   ): Promise<DonationSubmissionResult> {
     try {
-      // 15s timeout (default is 70s). If the function is having a bad day — cold start,
-      // HubSpot stalled, network blip — fall through to the local Firestore fallback
-      // rather than freezing the donor on the Confirm button.
+      // 45s timeout. The callable now runs synchronous Givebutter verification + Roadie
+      // dispatch inline (~5–15s typical), so we need more headroom than the old fire-
+      // and-forget flow. If we still time out, fall through to the direct-Firestore
+      // fallback — the verifyContributionAndDispatch trigger backstops verification
+      // out-of-band and the donor sees the failure pane (no false "success").
       const callable = httpsCallable<CreateDonationRequestPayload, DonationSubmissionResult>(
         this.firebaseClient.functions,
         'createDonationRequest',
-        { timeout: 15_000 },
+        { timeout: 45_000 },
       );
       const result = await callable(payload);
       return result.data;

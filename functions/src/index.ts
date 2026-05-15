@@ -28,11 +28,12 @@ import { MockShippingLabelProvider } from './providers/mock-shipping-label-provi
 import { GivebutterService } from './services/givebutter.service.js';
 import { HubspotService } from './services/hubspot.service.js';
 import { ResendEmailService } from './services/resend.service.js';
+import { verifyAndDispatchPickup } from './services/dispatch.service.js';
 import { generateDropoffReference } from './utils/dropoff-reference.js';
 import {
   createContributionSessionSchema,
   createDonationRequestSchema,
-  PICKUP_DONATION_MIN_USD
+  getPickupDonationMinUsd
 } from './validators.js';
 
 initializeApp();
@@ -62,7 +63,9 @@ const givebutterService = new GivebutterService();
 const hubspotService = new HubspotService();
 const resendEmailService = new ResendEmailService();
 
-export const createDonationRequest = onCall({ region: 'us-central1' }, async (request) => {
+export const createDonationRequest = onCall(
+  { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' },
+  async (request) => {
   const parsed = createDonationRequestSchema.safeParse(request.data);
 
   if (!parsed.success) {
@@ -77,15 +80,12 @@ export const createDonationRequest = onCall({ region: 'us-central1' }, async (re
   let dropoffReference: string | undefined;
   let courierDispatchId: string | undefined;
   let shippingLabelReference: string | undefined;
+  let verifiedAmountUsd: number | undefined;
+  let failureReason: string | undefined;
 
   if (payload.donationType === 'pickup' && payload.pickup) {
-    // Pickups are gated behind an active server-to-server Givebutter verification.
-    // The verifyContributionAndDispatch onCreate trigger fires immediately on this
-    // doc create — it calls Givebutter's API with the captured gbSessionId, then
-    // dispatches the courier (queued_for_dispatch) on success or marks the request
-    // payment_verification_failed (and emails the donor) on explicit rejection.
-    // If Givebutter API errors transiently the trigger drops to awaiting_payment so
-    // handleGivebutterWebhook stays a viable recovery path.
+    // Initial status; the synchronous verification below transitions it to a
+    // terminal state before this callable returns.
     status = 'verifying_payment';
   }
 
@@ -135,6 +135,61 @@ export const createDonationRequest = onCall({ region: 'us-central1' }, async (re
     });
   });
 
+  // For pickups, gate the response on real Givebutter verification + Roadie dispatch
+  // so the donor sees the actual outcome on the confirmation page (not an optimistic
+  // "verifying" state). The verifyContributionAndDispatch trigger still runs on the
+  // create above as a backstop for the frontend's direct-Firestore-write fallback path.
+  if (payload.donationType === 'pickup' && payload.pickup) {
+    const verification = await verifyAndDispatchPickup(
+      requestRef.id,
+      payload.donor,
+      payload.pickup,
+      {
+        givebutterService,
+        resendEmailService,
+        courierProvider: getCourierProvider()
+      }
+    );
+
+    status = verification.status;
+    courierDispatchId = verification.courierDispatchId;
+    verifiedAmountUsd = verification.verifiedAmountUsd;
+    failureReason = verification.failureReason;
+
+    const update = {
+      status,
+      contribution: {
+        ...payload.contribution,
+        ...(verification.status === 'queued_for_dispatch'
+          ? { status: 'completed' as const, amountUsd: verification.verifiedAmountUsd }
+          : {})
+      },
+      metadata: {
+        ...(baseDoc.metadata ?? {}),
+        ...(verification.courierDispatchId
+          ? { courierDispatchId: verification.courierDispatchId }
+          : {}),
+        ...(verification.verificationTransactionId
+          ? { verificationTransactionId: verification.verificationTransactionId }
+          : {}),
+        ...(verification.failureReason
+          ? { verificationFailureReason: verification.failureReason }
+          : {}),
+        ...(verification.amountPaid != null
+          ? { verificationAmountPaid: verification.amountPaid }
+          : {})
+      },
+      updatedAt: Timestamp.now()
+    };
+
+    await db.runTransaction(async (transaction) => {
+      transaction.set(requestRef, update, { merge: true });
+      transaction.set(db.collection('pickup_requests').doc(requestRef.id), update, {
+        merge: true
+      });
+    });
+  }
+
   const metaCity =
     typeof payload.metadata?.['city'] === 'string'
       ? (payload.metadata['city'] as string)
@@ -173,6 +228,8 @@ export const createDonationRequest = onCall({ region: 'us-central1' }, async (re
     dropoffReference,
     courierDispatchId,
     shippingLabelReference,
+    verifiedAmountUsd,
+    failureReason,
     nextSteps: buildNextSteps(payload.donationType)
   } satisfies DonationSubmissionResult;
 });
@@ -213,137 +270,61 @@ export const verifyContributionAndDispatch = onDocumentCreated(
       return;
     }
 
-    // Dev escape hatch — set SKIP_GIVEBUTTER_VERIFICATION=true in functions/.env to
-    // treat all pickups as verified. Lets us exercise the dispatch path end-to-end
-    // without paying through the live widget every iteration. Never set this in prod.
-    if (process.env['SKIP_GIVEBUTTER_VERIFICATION'] === 'true') {
-      console.warn('[dev] SKIP_GIVEBUTTER_VERIFICATION is on; auto-verifying pickup', { requestId });
-      try {
-        const dispatch = await getCourierProvider().dispatchPickup({
-          requestId,
-          donor: data['donor'],
-          pickup: data['pickup']
-        });
-        const update = {
-          status: 'queued_for_dispatch' as DonationStatus,
-          contribution: {
-            ...(data['contribution'] ?? {}),
-            status: 'completed',
-            amountUsd: PICKUP_DONATION_MIN_USD
-          },
-          metadata: {
-            ...(data['metadata'] ?? {}),
-            courierDispatchId: dispatch.dispatchId,
-            verificationTransactionId: 'dev_skip_verification'
-          },
-          updatedAt: Timestamp.now()
-        };
-        await snap.ref.set(update, { merge: true });
-        await db.collection('pickup_requests').doc(requestId).set(update, { merge: true });
-      } catch (err) {
-        console.error('Dev-skip dispatch failed', { requestId, err });
-      }
+    // Re-read the current doc state. The synchronous createDonationRequest callable
+    // writes the doc, then runs verification, then updates the doc to a terminal
+    // status. The onCreate trigger fires off the initial write and would race with
+    // the callable's update — bail if the callable already settled this doc.
+    const fresh = await snap.ref.get();
+    const currentStatus = fresh.data()?.['status'] as DonationStatus | undefined;
+    if (
+      currentStatus === 'queued_for_dispatch' ||
+      currentStatus === 'payment_verification_failed' ||
+      currentStatus === 'awaiting_payment'
+    ) {
       return;
     }
 
-    const donorEmail: string | undefined = data['donor']?.email;
-    if (!donorEmail) {
-      console.error('Pickup donation_request missing donor.email', { requestId });
-      await snap.ref.set(
-        {
-          status: 'payment_verification_failed',
-          metadata: { ...(data['metadata'] ?? {}), verificationFailureReason: 'missing_donor_email' },
-          updatedAt: Timestamp.now()
-        },
-        { merge: true }
-      );
-      return;
-    }
-
-    const lookbackMinutes = Number(process.env['GIVEBUTTER_DONATION_LOOKBACK_MINUTES'] ?? 30);
-    const verification = await givebutterService.findRecentTransactionForDonor(
-      donorEmail,
-      PICKUP_DONATION_MIN_USD,
-      lookbackMinutes
-    );
-
-    if (verification.kind === 'verified') {
-      try {
-        const dispatch = await getCourierProvider().dispatchPickup({
-          requestId,
-          donor: data['donor'],
-          pickup: data['pickup']
-        });
-
-        const update = {
-          status: 'queued_for_dispatch' as DonationStatus,
-          contribution: {
-            ...(data['contribution'] ?? {}),
-            status: 'completed',
-            amountUsd: verification.amountUsd
-          },
-          metadata: {
-            ...(data['metadata'] ?? {}),
-            courierDispatchId: dispatch.dispatchId,
-            verificationTransactionId: verification.transactionId
-          },
-          updatedAt: Timestamp.now()
-        };
-
-        await snap.ref.set(update, { merge: true });
-        await db.collection('pickup_requests').doc(requestId).set(update, { merge: true });
-      } catch (err) {
-        // Dispatch threw after a verified payment — leave status alone (verifying_payment)
-        // so the webhook can retry the dispatch. Logged for ops follow-up.
-        console.error('Courier dispatch failed after verification', { requestId, err });
-      }
-      return;
-    }
-
-    if (verification.kind === 'rejected') {
-      await snap.ref.set(
-        {
-          status: 'payment_verification_failed' as DonationStatus,
-          metadata: {
-            ...(data['metadata'] ?? {}),
-            verificationFailureReason: verification.reason,
-            verificationAmountPaid: verification.amountUsd
-          },
-          updatedAt: Timestamp.now()
-        },
-        { merge: true }
-      );
-
-      await resendEmailService
-        .sendDonationIssueEmail({
-          donorEmail: data['donor']?.email ?? '',
-          donorName: data['donor']?.fullName ?? '',
-          requestId,
-          reason: verification.reason,
-          amountPaid: verification.amountUsd,
-          minimumUsd: PICKUP_DONATION_MIN_USD
-        })
-        .catch((err) => console.warn('Resend mock failed', err));
-      return;
-    }
-
-    // verification.kind === 'error' — Givebutter API was unavailable / timed out. Don't
-    // blame the donor; drop to awaiting_payment and let the webhook rescue.
-    console.warn('Givebutter verification errored; falling back to webhook recovery', {
+    // Backstop path: the frontend's direct-Firestore-write fallback (used when
+    // the callable times out) skips the synchronous verification, so we run it here.
+    const verification = await verifyAndDispatchPickup(
       requestId,
-      reason: verification.reason
-    });
-    await snap.ref.set(
+      data['donor'],
+      data['pickup'],
       {
-        status: 'awaiting_payment' as DonationStatus,
-        metadata: {
-          ...(data['metadata'] ?? {}),
-          verificationFailureReason: verification.reason
-        },
-        updatedAt: Timestamp.now()
-      },
-      { merge: true }
+        givebutterService,
+        resendEmailService,
+        courierProvider: getCourierProvider()
+      }
     );
+
+    const update = {
+      status: verification.status,
+      contribution: {
+        ...(data['contribution'] ?? {}),
+        ...(verification.status === 'queued_for_dispatch'
+          ? { status: 'completed', amountUsd: verification.verifiedAmountUsd }
+          : {})
+      },
+      metadata: {
+        ...(data['metadata'] ?? {}),
+        ...(verification.courierDispatchId
+          ? { courierDispatchId: verification.courierDispatchId }
+          : {}),
+        ...(verification.verificationTransactionId
+          ? { verificationTransactionId: verification.verificationTransactionId }
+          : {}),
+        ...(verification.failureReason
+          ? { verificationFailureReason: verification.failureReason }
+          : {}),
+        ...(verification.amountPaid != null
+          ? { verificationAmountPaid: verification.amountPaid }
+          : {})
+      },
+      updatedAt: Timestamp.now()
+    };
+
+    await snap.ref.set(update, { merge: true });
+    await db.collection('pickup_requests').doc(requestId).set(update, { merge: true });
   }
 );
 
@@ -409,7 +390,7 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
       data?.['donationType'] === 'pickup' &&
       (data?.['status'] === 'awaiting_payment' || data?.['status'] === 'verifying_payment') &&
       typeof completedAmount === 'number' &&
-      completedAmount >= PICKUP_DONATION_MIN_USD
+      completedAmount >= getPickupDonationMinUsd()
     ) {
       try {
         const dispatch = await getCourierProvider().dispatchPickup({
@@ -448,12 +429,12 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
     } else if (
       data?.['donationType'] === 'pickup' &&
       (data?.['status'] === 'awaiting_payment' || data?.['status'] === 'verifying_payment') &&
-      (typeof completedAmount !== 'number' || completedAmount < PICKUP_DONATION_MIN_USD)
+      (typeof completedAmount !== 'number' || completedAmount < getPickupDonationMinUsd())
     ) {
       console.warn('Pickup donation below minimum; not dispatching courier', {
         requestId,
         completedAmount,
-        minimum: PICKUP_DONATION_MIN_USD
+        minimum: getPickupDonationMinUsd()
       });
     } else if (
       data?.['donationType'] === 'pickup' &&

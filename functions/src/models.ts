@@ -81,6 +81,8 @@ export interface DonationSubmissionResult {
   dropoffReference?: string;
   courierDispatchId?: string;
   shippingLabelReference?: string;
+  verifiedAmountUsd?: number;
+  failureReason?: string;
 }
 
 export interface CreateContributionSessionPayload {
