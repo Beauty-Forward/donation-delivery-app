@@ -1,7 +1,12 @@
 import { z } from 'zod';
 
 // Lowered (e.g. 1) in non-prod via env so the gate is testable without paying $15 each time.
-export const PICKUP_DONATION_MIN_USD = Number(process.env.PICKUP_DONATION_MIN_USD ?? 15);
+// Read at call-time, not module-load time: in the Firebase emulator, env vars (especially
+// from .env.local) aren't reliably present when modules first evaluate, so caching this
+// in a const would freeze it at the 15 fallback regardless of what the env says.
+export function getPickupDonationMinUsd(): number {
+  return Number(process.env.PICKUP_DONATION_MIN_USD ?? 100);
+}
 
 const addressSchema = z.object({
   line1: z.string().min(3),
@@ -9,14 +14,14 @@ const addressSchema = z.object({
   city: z.string().min(2),
   state: z.string().min(2).max(2),
   postalCode: z.string().min(5),
-  instructions: z.string().optional()
+  instructions: z.string().optional(),
 });
 
 const donorSchema = z.object({
   fullName: z.string().min(2),
   email: z.string().email(),
   phone: z.string().min(7),
-  donorAccountId: z.string().optional()
+  donorAccountId: z.string().optional(),
 });
 
 const contributionSchema = z.object({
@@ -24,7 +29,7 @@ const contributionSchema = z.object({
   status: z.enum(['not_started', 'checkout_started', 'completed', 'skipped']),
   amountUsd: z.number().positive().optional(),
   checkoutUrl: z.string().url().optional(),
-  gbSessionId: z.string().min(1).optional()
+  gbSessionId: z.string().min(1).optional(),
 });
 
 const pickupSchema = z.object({
@@ -32,7 +37,7 @@ const pickupSchema = z.object({
   preferredDate: z.string().min(4),
   preferredTimeWindow: z.string().min(4),
   donationNotes: z.string().optional(),
-  warehouseAddress: addressSchema
+  warehouseAddress: addressSchema,
 });
 
 const shippingSchema = z.object({
@@ -40,7 +45,7 @@ const shippingSchema = z.object({
   shippingLabelRequested: z.boolean(),
   packageNotes: z.string().optional(),
   shippingLabelIntentAmountUsd: z.number().positive().optional(),
-  shippingLabelQuoteId: z.string().optional()
+  shippingLabelQuoteId: z.string().optional(),
 });
 
 const dropoffSchema = z.object({
@@ -49,7 +54,7 @@ const dropoffSchema = z.object({
   dropoffNotes: z.string().optional(),
   locationName: z.string().min(2),
   locationAddress: addressSchema,
-  referenceCode: z.string().optional()
+  referenceCode: z.string().optional(),
 });
 
 export const createDonationRequestSchema = z
@@ -60,27 +65,27 @@ export const createDonationRequestSchema = z
     pickup: pickupSchema.optional(),
     shipping: shippingSchema.optional(),
     dropoff: dropoffSchema.optional(),
-    metadata: z.record(z.unknown()).optional()
+    metadata: z.record(z.unknown()).optional(),
   })
   .superRefine((payload, context) => {
     if (payload.donationType === 'pickup' && !payload.pickup) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Pickup details are required for pickup requests.'
+        message: 'Pickup details are required for pickup requests.',
       });
     }
 
     if (payload.donationType === 'shipping' && !payload.shipping) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Shipping details are required for shipping requests.'
+        message: 'Shipping details are required for shipping requests.',
       });
     }
 
     if (payload.donationType === 'dropoff' && !payload.dropoff) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Drop-off details are required for drop-off requests.'
+        message: 'Drop-off details are required for drop-off requests.',
       });
     }
 
@@ -95,5 +100,5 @@ export const createContributionSessionSchema = z.object({
   donationType: z.enum(['pickup', 'shipping', 'dropoff']),
   amountUsd: z.number().positive().optional(),
   donorEmail: z.string().email().optional(),
-  requestId: z.string().optional()
+  requestId: z.string().optional(),
 });

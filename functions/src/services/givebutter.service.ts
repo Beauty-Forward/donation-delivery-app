@@ -1,7 +1,4 @@
-import {
-  ContributionSessionResponse,
-  CreateContributionSessionPayload
-} from '../models.js';
+import { ContributionSessionResponse, CreateContributionSessionPayload } from '../models.js';
 
 // Discriminated union returned by fetchTransactionBySessionId. The verification
 // trigger branches on `kind` to decide whether to dispatch the courier, mark the
@@ -26,7 +23,7 @@ export class GivebutterService {
       'https://givebutter.com/beauty-forward',
     apiBaseUrl: string = process.env['GIVEBUTTER_API_BASE_URL'] ?? 'https://api.givebutter.com/v1',
     apiKey: string = process.env['GIVEBUTTER_API_KEY'] ?? '',
-    verificationTimeoutMs = 8000
+    verificationTimeoutMs = 8000,
   ) {
     this.apiBaseUrl = apiBaseUrl;
     this.apiKey = apiKey;
@@ -34,7 +31,7 @@ export class GivebutterService {
   }
 
   async createCheckoutSession(
-    payload: CreateContributionSessionPayload
+    payload: CreateContributionSessionPayload,
   ): Promise<ContributionSessionResponse> {
     // TODO: Replace this URL builder with a real Givebutter API session creation call.
     const checkoutUrl = new URL(this.campaignUrl);
@@ -52,7 +49,7 @@ export class GivebutterService {
     return {
       provider: 'givebutter',
       sessionId: `gb_mock_${Date.now()}`,
-      checkoutUrl: checkoutUrl.toString()
+      checkoutUrl: checkoutUrl.toString(),
     };
   }
 
@@ -70,7 +67,7 @@ export class GivebutterService {
   async findRecentTransactionForDonor(
     donorEmail: string,
     minimumUsd: number,
-    lookbackMinutes: number
+    lookbackMinutes: number,
   ): Promise<GivebutterVerification> {
     if (!this.apiKey) {
       return { kind: 'error', reason: 'givebutter_api_key_not_configured' };
@@ -97,9 +94,9 @@ export class GivebutterService {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${this.apiKey}`,
-            Accept: 'application/json'
+            Accept: 'application/json',
           },
-          signal: controller.signal
+          signal: controller.signal,
         });
 
         if (!res.ok) {
@@ -165,7 +162,7 @@ export class GivebutterService {
             return {
               kind: 'verified',
               amountUsd: amountPaid,
-              transactionId: typeof txn.id === 'string' ? txn.id : ''
+              transactionId: typeof txn.id === 'string' ? txn.id : '',
             };
           }
 
@@ -188,7 +185,7 @@ export class GivebutterService {
         return {
           kind: 'rejected',
           reason: 'amount_below_minimum',
-          amountUsd: bestMatchAmount
+          amountUsd: bestMatchAmount,
         };
       }
       return { kind: 'rejected', reason: 'not_found' };
@@ -206,7 +203,7 @@ export class GivebutterService {
 
 function parseTransactionTimestamp(
   createdAt?: string,
-  timestamp?: string | number
+  timestamp?: string | number,
 ): number | undefined {
   if (typeof createdAt === 'string') {
     const ms = Date.parse(createdAt);

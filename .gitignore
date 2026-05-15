@@ -2,6 +2,8 @@
 
 # Sensitive Data
 .env
+.env.local
+.env.*.local
 
 # Compiled output
 /dist

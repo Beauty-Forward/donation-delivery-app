@@ -522,11 +522,11 @@
             } @else if (deliveryMethod === 'courier' && confirmationView === 'failed') {
               <section class="pane pane-submitted pane-failed">
                 <div class="failure-icon">!</div>
-                <h2>Hmm — we couldn't confirm your donation just yet.</h2>
+                <h2>We couldn't confirm your donation.</h2>
                 <p class="pane-subtitle">
-                  Givebutter didn't send back a receipt we could match to your pickup. We've emailed
-                  you the details so you can finish things up. Questions? Reach us at
-                  <strong>hello@beautyforward.com</strong>.
+                  To schedule a courier pickup we need a ${{ pickupDonationMin }} donation through
+                  Givebutter. Click <strong>Try again →</strong> to complete your donation, then
+                  resubmit. Questions? Reach us at <strong>hello@beautyforward.com</strong>.
                 </p>
 
                 <div class="wizard-nav">

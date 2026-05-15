@@ -17,6 +17,8 @@ export interface WizardFormState {
   dropoffNotes: string;
 }
 
+export type ConfirmationView = 'verifying' | 'success' | 'failed';
+
 export interface DonationWizardState {
   step: number;
   consentProducts: boolean;
@@ -29,6 +31,8 @@ export interface DonationWizardState {
   selectedTime: string | null;
   submitted: boolean;
   submittedRequestId: string | null;
+  confirmationView: ConfirmationView;
+  verifiedAmountUsd: number | null;
 }
 
 export const DEFAULT_WIZARD_FORM_STATE: WizardFormState = {
@@ -58,6 +62,8 @@ export const DEFAULT_DONATION_WIZARD_STATE: DonationWizardState = {
   selectedTime: null,
   submitted: false,
   submittedRequestId: null,
+  confirmationView: 'verifying',
+  verifiedAmountUsd: null,
 };
 
 @Injectable({
