@@ -151,6 +151,11 @@ describe('RoadieCourierProvider', () => {
     expect(typeof body.pickup_after).toBe('string');
     expect(typeof body.deliver_between.start).toBe('string');
     expect(typeof body.deliver_between.end).toBe('string');
+    expect(body.time_zone).toBe('America/New_York');
+    // pickupAfter for "9am-12pm" on 2099-05-20 (EDT) = 13:00 UTC.
+    expect(body.pickup_after).toBe('2099-05-20T13:00:00.000Z');
+    // deliverEnd has 4h buffer past window end = 16:00 NYC = 20:00 UTC.
+    expect(body.deliver_between.end).toBe('2099-05-20T20:00:00.000Z');
   });
 
   it('returns status=assigned when Roadie says the delivery is assigned', async () => {
@@ -200,22 +205,33 @@ describe('RoadieCourierProvider', () => {
 });
 
 describe('buildTimeWindow', () => {
-  it('parses a "9am-12pm" window on a future date', () => {
-    const { start, end } = buildTimeWindow('2099-05-20', '9am-12pm');
-    expect(start.getHours()).toBe(9);
-    expect(end.getHours()).toBe(12);
+  it('interprets a "9am-12pm" window as NYC local time (EDT)', () => {
+    const { pickupAfter, deliverStart, deliverEnd } = buildTimeWindow('2099-05-20', '9am-12pm');
+    // 9 AM EDT = 13:00 UTC.
+    expect(pickupAfter.toISOString()).toBe('2099-05-20T13:00:00.000Z');
+    // deliverStart mirrors pickupAfter so Roadie can begin delivery immediately.
+    expect(deliverStart.toISOString()).toBe(pickupAfter.toISOString());
+    // deliverEnd = window end (12 NYC) + 4h buffer = 16 NYC = 20:00 UTC EDT.
+    expect(deliverEnd.toISOString()).toBe('2099-05-20T20:00:00.000Z');
   });
 
-  it('parses an "afternoon" label', () => {
-    const { start, end } = buildTimeWindow('2099-05-20', 'Afternoon');
-    expect(start.getHours()).toBe(13);
-    expect(end.getHours()).toBe(17);
+  it('interprets a winter date in NYC as EST', () => {
+    // January is EST (UTC-5). 9 AM EST = 14:00 UTC.
+    const { pickupAfter } = buildTimeWindow('2099-01-15', '9am-12pm');
+    expect(pickupAfter.toISOString()).toBe('2099-01-15T14:00:00.000Z');
   });
 
-  it('pushes start forward when the window is in the past', () => {
-    const { start, end } = buildTimeWindow('2000-01-01', '9am-12pm');
-    expect(start.getTime()).toBeGreaterThanOrEqual(Date.now());
-    expect(end.getTime()).toBeGreaterThan(start.getTime());
+  it('parses an "afternoon" label as 1pm-5pm NYC', () => {
+    const { pickupAfter, deliverEnd } = buildTimeWindow('2099-05-20', 'Afternoon');
+    // 1 PM EDT = 17:00 UTC; 5 PM + 4h = 9 PM EDT = 01:00 UTC next day.
+    expect(pickupAfter.toISOString()).toBe('2099-05-20T17:00:00.000Z');
+    expect(deliverEnd.toISOString()).toBe('2099-05-21T01:00:00.000Z');
+  });
+
+  it('pushes pickupAfter forward when the window is in the past', () => {
+    const { pickupAfter, deliverEnd } = buildTimeWindow('2000-01-01', '9am-12pm');
+    expect(pickupAfter.getTime()).toBeGreaterThanOrEqual(Date.now());
+    expect(deliverEnd.getTime()).toBeGreaterThan(pickupAfter.getTime());
   });
 });
 
