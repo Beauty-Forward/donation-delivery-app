@@ -1,44 +1,77 @@
-// MOCK Resend integration. Mirrors the existing MockRoadieCourierProvider /
-// MockShippingLabelProvider pattern: log what would be sent so the rest of the
-// pipeline (verifyContributionAndDispatch trigger) can be verified end-to-end
-// without a real Resend account. A follow-up PR will replace the body of
-// `sendDonationIssueEmail` with a real Resend API call.
+// Thin Resend API client. Sends transactional confirmation emails via the
+// Resend HTTP API. Raw fetch matches the HubspotService / Roadie pattern;
+// the templates themselves live in ../email/templates.
 //
-// Real implementation reference: https://resend.com/docs/send-with-node
+// Reference: https://resend.com/docs/api-reference/emails/send-email
 
-export type DonationVerificationFailureReason =
-  | 'not_found'
-  | 'incomplete'
-  | 'amount_below_minimum';
-
-export interface DonationIssueEmailParams {
-  donorEmail: string;
-  donorName: string;
-  requestId: string;
-  reason: DonationVerificationFailureReason;
-  amountPaid?: number;
-  minimumUsd: number;
-}
+import {
+  buildPickupConfirmationEmail,
+  type PickupConfirmationEmailData
+} from '../email/templates/pickup-confirmation.js';
+import {
+  buildShippingConfirmationEmail,
+  type ShippingConfirmationEmailData
+} from '../email/templates/shipping-confirmation.js';
+import {
+  buildDropoffConfirmationEmail,
+  type DropoffConfirmationEmailData
+} from '../email/templates/dropoff-confirmation.js';
+import {
+  buildDonationRecoveryEmail,
+  type DonationRecoveryEmailData
+} from '../email/templates/donation-recovery.js';
 
 export class ResendEmailService {
-  private readonly apiKey: string;
+  constructor(
+    private readonly apiKey: string = process.env['RESEND_API_KEY'] ?? '',
+    private readonly fromEmail: string = process.env['RESEND_FROM_EMAIL'] ?? 'onboarding@resend.dev',
+    private readonly baseUrl: string = 'https://api.resend.com',
+    private readonly fetchImpl: typeof fetch = fetch
+  ) {}
 
-  constructor(apiKey: string = process.env['RESEND_API_KEY'] ?? '') {
-    this.apiKey = apiKey;
+  async sendPickupConfirmationEmail(data: PickupConfirmationEmailData): Promise<void> {
+    const { subject, html } = buildPickupConfirmationEmail(data);
+    await this.send({ to: data.donor.email, subject, html });
   }
 
-  async sendDonationIssueEmail(params: DonationIssueEmailParams): Promise<void> {
-    // TODO: replace with a real Resend API call. For now, log so the trigger flow
-    // is verifiable end-to-end. The follow-up PR will use this.apiKey to authenticate.
-    console.warn('[mock-resend] would send donation-issue email', {
-      to: params.donorEmail,
-      donorName: params.donorName,
-      subject: "There was an issue with your donation",
-      requestId: params.requestId,
-      reason: params.reason,
-      amountPaid: params.amountPaid,
-      minimumUsd: params.minimumUsd,
-      apiKeyConfigured: this.apiKey.length > 0
+  async sendShippingConfirmationEmail(data: ShippingConfirmationEmailData): Promise<void> {
+    const { subject, html } = buildShippingConfirmationEmail(data);
+    await this.send({ to: data.donor.email, subject, html });
+  }
+
+  async sendDropoffConfirmationEmail(data: DropoffConfirmationEmailData): Promise<void> {
+    const { subject, html } = buildDropoffConfirmationEmail(data);
+    await this.send({ to: data.donor.email, subject, html });
+  }
+
+  async sendDonationRecoveryEmail(data: DonationRecoveryEmailData): Promise<void> {
+    const { subject, html } = buildDonationRecoveryEmail(data);
+    await this.send({ to: data.donor.email, subject, html });
+  }
+
+  private async send(args: { to: string; subject: string; html: string }): Promise<void> {
+    if (!this.apiKey) {
+      console.warn('RESEND_API_KEY not set; skipping confirmation email');
+      return;
+    }
+
+    const res = await this.fetchImpl(`${this.baseUrl}/emails`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: this.fromEmail,
+        to: [args.to],
+        subject: args.subject,
+        html: args.html
+      })
     });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Resend send failed: ${res.status} ${body}`);
+    }
   }
 }

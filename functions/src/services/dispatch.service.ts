@@ -1,7 +1,6 @@
 import type { DonorInfo, PickupDetails } from '../models.js';
 import type { CourierDispatchProvider } from '../providers/courier-provider.js';
 import { GivebutterService } from './givebutter.service.js';
-import { ResendEmailService } from './resend.service.js';
 import { getPickupDonationMinUsd } from '../validators.js';
 
 export interface VerifyAndDispatchResult {
@@ -10,12 +9,13 @@ export interface VerifyAndDispatchResult {
   verifiedAmountUsd?: number;
   verificationTransactionId?: string;
   failureReason?: string;
-  amountPaid?: number;
 }
 
+// Pure verification + dispatch — no side-effect emails. The caller in index.ts
+// is responsible for sending success/recovery emails via sendEmailOnce after
+// inspecting the returned result.
 export interface VerifyAndDispatchDeps {
   givebutterService: GivebutterService;
-  resendEmailService: ResendEmailService;
   courierProvider: CourierDispatchProvider;
 }
 
@@ -82,20 +82,11 @@ export async function verifyAndDispatchPickup(
   }
 
   if (verification.kind === 'rejected') {
-    await deps.resendEmailService
-      .sendDonationIssueEmail({
-        donorEmail: donor.email,
-        donorName: donor.fullName ?? '',
-        requestId,
-        reason: verification.reason,
-        amountPaid: verification.amountUsd,
-        minimumUsd: getPickupDonationMinUsd()
-      })
-      .catch((err) => console.warn('Resend mock failed', err));
+    // Pure verification result — the caller in index.ts handles side effects
+    // (writing the doc, sending the recovery email via sendEmailOnce).
     return {
       status: 'payment_verification_failed',
-      failureReason: verification.reason,
-      amountPaid: verification.amountUsd
+      failureReason: verification.reason
     };
   }
 

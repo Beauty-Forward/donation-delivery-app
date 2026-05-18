@@ -19,7 +19,9 @@ import {
   CreateContributionSessionPayload,
   CreateDonationRequestPayload,
   DonationStatus,
-  DonationSubmissionResult
+  DonationSubmissionResult,
+  DonorInfo,
+  PickupDetails,
 } from './models.js';
 import { MockRoadieCourierProvider } from './providers/mock-roadie-provider.js';
 import { RoadieCourierProvider } from './providers/roadie-provider.js';
@@ -30,10 +32,11 @@ import { HubspotService } from './services/hubspot.service.js';
 import { ResendEmailService } from './services/resend.service.js';
 import { verifyAndDispatchPickup } from './services/dispatch.service.js';
 import { generateDropoffReference } from './utils/dropoff-reference.js';
+import { WAREHOUSE_ADDRESS } from './constants/warehouse.js';
 import {
   createContributionSessionSchema,
   createDonationRequestSchema,
-  getPickupDonationMinUsd
+  getPickupDonationMinUsd,
 } from './validators.js';
 
 initializeApp();
@@ -54,7 +57,7 @@ function getCourierProvider(): CourierDispatchProvider {
     ? new RoadieCourierProvider()
     : new MockRoadieCourierProvider();
   console.info(
-    `[courier] Using ${process.env['ROADIE_API_KEY'] ? 'RoadieCourierProvider' : 'MockRoadieCourierProvider'}`
+    `[courier] Using ${process.env['ROADIE_API_KEY'] ? 'RoadieCourierProvider' : 'MockRoadieCourierProvider'}`,
   );
   return _courierProvider;
 }
@@ -63,176 +66,283 @@ const givebutterService = new GivebutterService();
 const hubspotService = new HubspotService();
 const resendEmailService = new ResendEmailService();
 
+// Send an email at most once per donation_request, keyed by a named flag on the
+// doc. Keeps overlapping code paths (callable + onCreate trigger + Givebutter
+// webhook recovery) from each emailing the same donor, and survives function
+// retries. Each email type uses its own flag name:
+//
+//   'confirmationEmailSentAt' — success-path emails (pickup / shipping / dropoff)
+//   'recoveryEmailSentAt'     — not_found recovery email
+//
+// Read-then-write is non-transactional on purpose: a duplicate would only be
+// wasted bandwidth, and all callers are wrapped in their own happy-path flow,
+// so we swallow send failures rather than propagate them.
+type EmailIdempotencyFlag = 'confirmationEmailSentAt' | 'recoveryEmailSentAt';
+
+async function sendEmailOnce(
+  requestId: string,
+  flagName: EmailIdempotencyFlag,
+  send: () => Promise<void>,
+): Promise<void> {
+  const ref = db.collection('donation_requests').doc(requestId);
+  const snap = await ref.get();
+  if (snap.data()?.[flagName]) {
+    console.info('[resend] skip: already sent', { requestId, flagName });
+    return;
+  }
+  console.info('[resend] attempting send', {
+    requestId,
+    flagName,
+    apiKeyConfigured: (process.env['RESEND_API_KEY'] ?? '').length > 0,
+    fromEmail: process.env['RESEND_FROM_EMAIL'] ?? 'onboarding@resend.dev',
+  });
+  try {
+    await send();
+    await ref.set({ [flagName]: Timestamp.now() }, { merge: true });
+    console.info('[resend] send completed', { requestId, flagName });
+  } catch (err) {
+    console.warn('Email send failed', { requestId, flagName, err });
+  }
+}
+
+// A pickup_request hits `queued_for_dispatch` via three different code paths:
+// the synchronous callable, the onCreate backstop trigger, and the Givebutter
+// webhook recovery. Each used to inline the same pickup-confirmation send.
+// Centralizing here so the email payload (and any future tweaks like analytics
+// hooks) lives in one place.
+async function notifyPickupQueued(
+  requestId: string,
+  donor: DonorInfo,
+  pickup: PickupDetails,
+  courierDispatchId: string | undefined,
+): Promise<void> {
+  await sendEmailOnce(requestId, 'confirmationEmailSentAt', () =>
+    resendEmailService.sendPickupConfirmationEmail({
+      donor,
+      requestId,
+      status: 'queued_for_dispatch',
+      pickup,
+      courierDispatchId,
+      nextSteps: buildNextSteps('pickup'),
+    }),
+  );
+}
+
 export const createDonationRequest = onCall(
   { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' },
   async (request) => {
-  const parsed = createDonationRequestSchema.safeParse(request.data);
+    const parsed = createDonationRequestSchema.safeParse(request.data);
 
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.flatten().formErrors.join(' '));
-  }
-
-  const payload = parsed.data as CreateDonationRequestPayload;
-  const createdAt = Timestamp.now();
-  const requestRef = db.collection('donation_requests').doc();
-
-  let status: DonationStatus = 'submitted';
-  let dropoffReference: string | undefined;
-  let courierDispatchId: string | undefined;
-  let shippingLabelReference: string | undefined;
-  let verifiedAmountUsd: number | undefined;
-  let failureReason: string | undefined;
-
-  if (payload.donationType === 'pickup' && payload.pickup) {
-    // Initial status; the synchronous verification below transitions it to a
-    // terminal state before this callable returns.
-    status = 'verifying_payment';
-  }
-
-  if (payload.donationType === 'shipping' && payload.shipping) {
-    status = 'pending_label_purchase';
-
-    if (payload.shipping.shippingLabelRequested) {
-      const labelIntent = await shippingLabelProvider.createLabelIntent({
-        requestId: requestRef.id,
-        shipping: payload.shipping
-      });
-      shippingLabelReference = labelIntent.quoteId;
+    if (!parsed.success) {
+      throw new HttpsError('invalid-argument', parsed.error.flatten().formErrors.join(' '));
     }
-  }
 
-  if (payload.donationType === 'dropoff' && payload.dropoff) {
-    status = 'dropoff_requested';
-    dropoffReference = generateDropoffReference();
-    payload.dropoff.referenceCode = dropoffReference;
-  }
+    const payload = parsed.data as CreateDonationRequestPayload;
+    const createdAt = Timestamp.now();
+    const requestRef = db.collection('donation_requests').doc();
 
-  const baseDoc = {
-    donationType: payload.donationType,
-    donor: payload.donor,
-    contribution: payload.contribution,
-    pickup: payload.pickup,
-    shipping: payload.shipping,
-    dropoff: payload.dropoff,
-    status,
-    createdAt,
-    updatedAt: createdAt,
-    metadata: {
-      ...payload.metadata,
-      source: 'public-web',
-      courierDispatchId,
-      shippingLabelReference
+    let status: DonationStatus = 'submitted';
+    let dropoffReference: string | undefined;
+    let courierDispatchId: string | undefined;
+    let shippingLabelReference: string | undefined;
+    let verifiedAmountUsd: number | undefined;
+    let failureReason: string | undefined;
+
+    if (payload.donationType === 'pickup' && payload.pickup) {
+      // Initial status; the synchronous verification below transitions it to a
+      // terminal state before this callable returns.
+      status = 'verifying_payment';
     }
-  };
 
-  const typedCollectionName = `${payload.donationType}_requests`;
+    if (payload.donationType === 'shipping' && payload.shipping) {
+      status = 'pending_label_purchase';
 
-  await db.runTransaction(async (transaction) => {
-    transaction.set(requestRef, baseDoc);
-    transaction.set(db.collection(typedCollectionName).doc(requestRef.id), {
-      donationRequestId: requestRef.id,
-      ...baseDoc
-    });
-  });
-
-  // For pickups, gate the response on real Givebutter verification + Roadie dispatch
-  // so the donor sees the actual outcome on the confirmation page (not an optimistic
-  // "verifying" state). The verifyContributionAndDispatch trigger still runs on the
-  // create above as a backstop for the frontend's direct-Firestore-write fallback path.
-  if (payload.donationType === 'pickup' && payload.pickup) {
-    const verification = await verifyAndDispatchPickup(
-      requestRef.id,
-      payload.donor,
-      payload.pickup,
-      {
-        givebutterService,
-        resendEmailService,
-        courierProvider: getCourierProvider()
+      if (payload.shipping.shippingLabelRequested) {
+        const labelIntent = await shippingLabelProvider.createLabelIntent({
+          requestId: requestRef.id,
+          shipping: payload.shipping,
+        });
+        shippingLabelReference = labelIntent.quoteId;
       }
-    );
+    }
 
-    status = verification.status;
-    courierDispatchId = verification.courierDispatchId;
-    verifiedAmountUsd = verification.verifiedAmountUsd;
-    failureReason = verification.failureReason;
+    if (payload.donationType === 'dropoff' && payload.dropoff) {
+      status = 'dropoff_requested';
+      dropoffReference = generateDropoffReference();
+      payload.dropoff.referenceCode = dropoffReference;
+    }
 
-    const update = {
+    const baseDoc = {
+      donationType: payload.donationType,
+      donor: payload.donor,
+      contribution: payload.contribution,
+      pickup: payload.pickup,
+      shipping: payload.shipping,
+      dropoff: payload.dropoff,
       status,
-      contribution: {
-        ...payload.contribution,
-        ...(verification.status === 'queued_for_dispatch'
-          ? { status: 'completed' as const, amountUsd: verification.verifiedAmountUsd }
-          : {})
-      },
+      createdAt,
+      updatedAt: createdAt,
       metadata: {
-        ...(baseDoc.metadata ?? {}),
-        ...(verification.courierDispatchId
-          ? { courierDispatchId: verification.courierDispatchId }
-          : {}),
-        ...(verification.verificationTransactionId
-          ? { verificationTransactionId: verification.verificationTransactionId }
-          : {}),
-        ...(verification.failureReason
-          ? { verificationFailureReason: verification.failureReason }
-          : {}),
-        ...(verification.amountPaid != null
-          ? { verificationAmountPaid: verification.amountPaid }
-          : {})
+        ...payload.metadata,
+        source: 'public-web',
+        courierDispatchId,
+        shippingLabelReference,
       },
-      updatedAt: Timestamp.now()
     };
 
+    const typedCollectionName = `${payload.donationType}_requests`;
+
     await db.runTransaction(async (transaction) => {
-      transaction.set(requestRef, update, { merge: true });
-      transaction.set(db.collection('pickup_requests').doc(requestRef.id), update, {
-        merge: true
+      transaction.set(requestRef, baseDoc);
+      transaction.set(db.collection(typedCollectionName).doc(requestRef.id), {
+        donationRequestId: requestRef.id,
+        ...baseDoc,
       });
     });
-  }
 
-  const metaCity =
-    typeof payload.metadata?.['city'] === 'string'
-      ? (payload.metadata['city'] as string)
-      : undefined;
-  const metaState =
-    typeof payload.metadata?.['state'] === 'string'
-      ? (payload.metadata['state'] as string)
-      : undefined;
-  const city =
-    metaCity ?? payload.pickup?.pickupAddress?.city ?? payload.shipping?.senderAddress?.city;
-  const state =
-    metaState ?? payload.pickup?.pickupAddress?.state ?? payload.shipping?.senderAddress?.state;
-  const packageSize =
-    typeof payload.metadata?.['packageSize'] === 'string'
-      ? (payload.metadata['packageSize'] as string)
-      : undefined;
+    // Shipping + dropoff have no async verification step — the doc create *is* the
+    // success moment, so email the donor here. Pickup waits until verification +
+    // dispatch resolves below.
+    if (payload.donationType === 'shipping' && payload.shipping) {
+      await sendEmailOnce(requestRef.id, 'confirmationEmailSentAt', () =>
+        resendEmailService.sendShippingConfirmationEmail({
+          donor: payload.donor,
+          requestId: requestRef.id,
+          status: 'pending_label_purchase',
+          shipping: payload.shipping!,
+          shippingLabelReference,
+          warehouseAddress: WAREHOUSE_ADDRESS,
+          nextSteps: buildNextSteps('shipping'),
+        }),
+      );
+    }
 
-  await hubspotService
-    .upsertDonorContact({
-      email: payload.donor.email,
-      fullName: payload.donor.fullName,
-      phone: payload.donor.phone,
-      donationMethod: payload.donationType,
-      donationAmountUsd: payload.contribution.amountUsd,
-      city,
-      state,
-      packageSize
-    })
-    .catch((err) => console.warn('HubSpot upsert failed', err));
+    if (payload.donationType === 'dropoff' && payload.dropoff) {
+      console.log('yeah hi, this fired');
+      await sendEmailOnce(requestRef.id, 'confirmationEmailSentAt', () =>
+        resendEmailService.sendDropoffConfirmationEmail({
+          donor: payload.donor,
+          requestId: requestRef.id,
+          status: 'dropoff_requested',
+          dropoff: payload.dropoff!,
+          dropoffReference,
+          nextSteps: buildNextSteps('dropoff'),
+        }),
+      );
+    }
 
-  return {
-    requestId: requestRef.id,
-    donationType: payload.donationType,
-    status,
-    createdAt: createdAt.toDate().toISOString(),
-    dropoffReference,
-    courierDispatchId,
-    shippingLabelReference,
-    verifiedAmountUsd,
-    failureReason,
-    nextSteps: buildNextSteps(payload.donationType)
-  } satisfies DonationSubmissionResult;
-});
+    // For pickups, gate the response on real Givebutter verification + Roadie dispatch
+    // so the donor sees the actual outcome on the confirmation page (not an optimistic
+    // "verifying" state). The verifyContributionAndDispatch trigger still runs on the
+    // create above as a backstop for the frontend's direct-Firestore-write fallback path.
+    if (payload.donationType === 'pickup' && payload.pickup) {
+      const verification = await verifyAndDispatchPickup(
+        requestRef.id,
+        payload.donor,
+        payload.pickup,
+        {
+          givebutterService,
+          courierProvider: getCourierProvider(),
+        },
+      );
+
+      status = verification.status;
+      courierDispatchId = verification.courierDispatchId;
+      verifiedAmountUsd = verification.verifiedAmountUsd;
+      failureReason = verification.failureReason;
+
+      const update = {
+        status,
+        contribution: {
+          ...payload.contribution,
+          ...(verification.status === 'queued_for_dispatch'
+            ? { status: 'completed' as const, amountUsd: verification.verifiedAmountUsd }
+            : {}),
+        },
+        metadata: {
+          ...(baseDoc.metadata ?? {}),
+          ...(verification.courierDispatchId
+            ? { courierDispatchId: verification.courierDispatchId }
+            : {}),
+          ...(verification.verificationTransactionId
+            ? { verificationTransactionId: verification.verificationTransactionId }
+            : {}),
+          ...(verification.failureReason
+            ? { verificationFailureReason: verification.failureReason }
+            : {}),
+        },
+        updatedAt: Timestamp.now(),
+      };
+
+      await db.runTransaction(async (transaction) => {
+        transaction.set(requestRef, update, { merge: true });
+        transaction.set(db.collection('pickup_requests').doc(requestRef.id), update, {
+          merge: true,
+        });
+      });
+
+      if (verification.status === 'queued_for_dispatch') {
+        await notifyPickupQueued(requestRef.id, payload.donor, payload.pickup!, courierDispatchId);
+      } else if (
+        verification.status === 'payment_verification_failed' &&
+        verification.failureReason === 'not_found'
+      ) {
+        // Immediate recovery nudge while the wizard surfaces the rejection in-app.
+        // Once the 24h scheduled-loop work in #64 lands, this immediate send moves
+        // behind an onSchedule trigger that queries stalled donations daily.
+        await sendEmailOnce(requestRef.id, 'recoveryEmailSentAt', () =>
+          resendEmailService.sendDonationRecoveryEmail({
+            donor: payload.donor,
+            requestId: requestRef.id,
+          }),
+        );
+      }
+    }
+
+    const metaCity =
+      typeof payload.metadata?.['city'] === 'string'
+        ? (payload.metadata['city'] as string)
+        : undefined;
+    const metaState =
+      typeof payload.metadata?.['state'] === 'string'
+        ? (payload.metadata['state'] as string)
+        : undefined;
+    const city =
+      metaCity ?? payload.pickup?.pickupAddress?.city ?? payload.shipping?.senderAddress?.city;
+    const state =
+      metaState ?? payload.pickup?.pickupAddress?.state ?? payload.shipping?.senderAddress?.state;
+    const packageSize =
+      typeof payload.metadata?.['packageSize'] === 'string'
+        ? (payload.metadata['packageSize'] as string)
+        : undefined;
+
+    await hubspotService
+      .upsertDonorContact({
+        email: payload.donor.email,
+        fullName: payload.donor.fullName,
+        phone: payload.donor.phone,
+        donationMethod: payload.donationType,
+        donationAmountUsd: payload.contribution.amountUsd,
+        city,
+        state,
+        packageSize,
+      })
+      .catch((err) => console.warn('HubSpot upsert failed', err));
+
+    return {
+      requestId: requestRef.id,
+      donationType: payload.donationType,
+      status,
+      createdAt: createdAt.toDate().toISOString(),
+      dropoffReference,
+      courierDispatchId,
+      shippingLabelReference,
+      verifiedAmountUsd,
+      failureReason,
+      nextSteps: buildNextSteps(payload.donationType),
+    } satisfies DonationSubmissionResult;
+  },
+);
 
 export const createContributionSession = onCall({ region: 'us-central1' }, async (request) => {
   const parsed = createContributionSessionSchema.safeParse(request.data);
@@ -286,16 +396,10 @@ export const verifyContributionAndDispatch = onDocumentCreated(
 
     // Backstop path: the frontend's direct-Firestore-write fallback (used when
     // the callable times out) skips the synchronous verification, so we run it here.
-    const verification = await verifyAndDispatchPickup(
-      requestId,
-      data['donor'],
-      data['pickup'],
-      {
-        givebutterService,
-        resendEmailService,
-        courierProvider: getCourierProvider()
-      }
-    );
+    const verification = await verifyAndDispatchPickup(requestId, data['donor'], data['pickup'], {
+      givebutterService,
+      courierProvider: getCourierProvider(),
+    });
 
     const update = {
       status: verification.status,
@@ -303,7 +407,7 @@ export const verifyContributionAndDispatch = onDocumentCreated(
         ...(data['contribution'] ?? {}),
         ...(verification.status === 'queued_for_dispatch'
           ? { status: 'completed', amountUsd: verification.verifiedAmountUsd }
-          : {})
+          : {}),
       },
       metadata: {
         ...(data['metadata'] ?? {}),
@@ -316,16 +420,29 @@ export const verifyContributionAndDispatch = onDocumentCreated(
         ...(verification.failureReason
           ? { verificationFailureReason: verification.failureReason }
           : {}),
-        ...(verification.amountPaid != null
-          ? { verificationAmountPaid: verification.amountPaid }
-          : {})
       },
-      updatedAt: Timestamp.now()
+      updatedAt: Timestamp.now(),
     };
 
     await snap.ref.set(update, { merge: true });
     await db.collection('pickup_requests').doc(requestId).set(update, { merge: true });
-  }
+
+    if (verification.status === 'queued_for_dispatch') {
+      await notifyPickupQueued(requestId, data['donor'], data['pickup'], verification.courierDispatchId);
+    } else if (
+      verification.status === 'payment_verification_failed' &&
+      verification.failureReason === 'not_found'
+    ) {
+      // Backstop recovery send for the direct-Firestore-write fallback path,
+      // mirroring the inline send in createDonationRequest. See #64.
+      await sendEmailOnce(requestId, 'recoveryEmailSentAt', () =>
+        resendEmailService.sendDonationRecoveryEmail({
+          donor: data['donor'],
+          requestId,
+        }),
+      );
+    }
+  },
 );
 
 export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, async (req, res) => {
@@ -364,15 +481,18 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
     const matchedDoc = matches.docs[0];
     const requestId = matchedDoc.id;
 
-    await db.collection('donation_requests').doc(requestId).set(
-      {
-        contribution: {
-          status: 'completed'
+    await db
+      .collection('donation_requests')
+      .doc(requestId)
+      .set(
+        {
+          contribution: {
+            status: 'completed',
+          },
+          updatedAt: Timestamp.now(),
         },
-        updatedAt: Timestamp.now()
-      },
-      { merge: true }
-    );
+        { merge: true },
+      );
 
     const snapshot = await db.collection('donation_requests').doc(requestId).get();
     const data = snapshot.data();
@@ -396,33 +516,41 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
         const dispatch = await getCourierProvider().dispatchPickup({
           requestId,
           donor: data['donor'],
-          pickup: data['pickup']
+          pickup: data['pickup'],
         });
 
-        await db.collection('donation_requests').doc(requestId).set(
-          {
-            status: 'queued_for_dispatch',
-            metadata: {
-              ...(data['metadata'] ?? {}),
-              courierDispatchId: dispatch.dispatchId
+        await db
+          .collection('donation_requests')
+          .doc(requestId)
+          .set(
+            {
+              status: 'queued_for_dispatch',
+              metadata: {
+                ...(data['metadata'] ?? {}),
+                courierDispatchId: dispatch.dispatchId,
+              },
+              updatedAt: Timestamp.now(),
             },
-            updatedAt: Timestamp.now()
-          },
-          { merge: true }
-        );
+            { merge: true },
+          );
 
         // Mirror the typed-collection doc so downstream readers stay in sync.
-        await db.collection('pickup_requests').doc(requestId).set(
-          {
-            status: 'queued_for_dispatch',
-            metadata: {
-              ...(data['metadata'] ?? {}),
-              courierDispatchId: dispatch.dispatchId
+        await db
+          .collection('pickup_requests')
+          .doc(requestId)
+          .set(
+            {
+              status: 'queued_for_dispatch',
+              metadata: {
+                ...(data['metadata'] ?? {}),
+                courierDispatchId: dispatch.dispatchId,
+              },
+              updatedAt: Timestamp.now(),
             },
-            updatedAt: Timestamp.now()
-          },
-          { merge: true }
-        );
+            { merge: true },
+          );
+
+        await notifyPickupQueued(requestId, data['donor'], data['pickup'], dispatch.dispatchId);
       } catch (err) {
         console.error('Courier dispatch failed after payment confirmation', err);
       }
@@ -434,7 +562,7 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
       console.warn('Pickup donation below minimum; not dispatching courier', {
         requestId,
         completedAmount,
-        minimum: getPickupDonationMinUsd()
+        minimum: getPickupDonationMinUsd(),
       });
     } else if (
       data?.['donationType'] === 'pickup' &&
@@ -443,7 +571,7 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
       // Verification trigger already rejected this; donor was emailed. Manual ops review.
       console.warn('Webhook arrived for already-failed verification; ignoring', {
         requestId,
-        completedAmount
+        completedAmount,
       });
     }
 
@@ -466,9 +594,8 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
           donationAmountUsd: completedAmount,
           city: docCity,
           state: docState,
-          packageSize:
-            typeof meta['packageSize'] === 'string' ? meta['packageSize'] : undefined,
-          refreshOnly: true
+          packageSize: typeof meta['packageSize'] === 'string' ? meta['packageSize'] : undefined,
+          refreshOnly: true,
         })
         .catch((err) => console.warn('HubSpot webhook upsert failed', err));
     }
@@ -483,141 +610,134 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
 // Called by the warehouse-facing IMS to look up donation metadata
 // using the drop-off reference code that donors receive from this app.
 
-export const lookupDonationByReference = onCall(
-  { region: 'us-central1' },
-  async (request) => {
-    const code =
-      typeof request.data?.referenceCode === 'string'
-        ? request.data.referenceCode.trim()
-        : '';
+export const lookupDonationByReference = onCall({ region: 'us-central1' }, async (request) => {
+  const code =
+    typeof request.data?.referenceCode === 'string' ? request.data.referenceCode.trim() : '';
 
-    if (!code) {
-      throw new HttpsError('invalid-argument', 'referenceCode is required');
-    }
-
-    const snapshot = await db
-      .collection('donation_requests')
-      .where('dropoff.referenceCode', '==', code)
-      .limit(1)
-      .get();
-
-    if (snapshot.empty) {
-      return { found: false };
-    }
-
-    const doc = snapshot.docs[0];
-    const data = doc.data();
-
-    return {
-      found: true,
-      requestId: doc.id,
-      donationType: data['donationType'],
-      status: data['status'],
-      donor: data['donor'],
-      dropoff: data['dropoff'],
-      pickup: data['pickup'],
-      shipping: data['shipping'],
-      createdAt: data['createdAt']?.toDate?.()?.toISOString?.() ?? null,
-    };
+  if (!code) {
+    throw new HttpsError('invalid-argument', 'referenceCode is required');
   }
-);
+
+  const snapshot = await db
+    .collection('donation_requests')
+    .where('dropoff.referenceCode', '==', code)
+    .limit(1)
+    .get();
+
+  if (snapshot.empty) {
+    return { found: false };
+  }
+
+  const doc = snapshot.docs[0];
+  const data = doc.data();
+
+  return {
+    found: true,
+    requestId: doc.id,
+    donationType: data['donationType'],
+    status: data['status'],
+    donor: data['donor'],
+    dropoff: data['dropoff'],
+    pickup: data['pickup'],
+    shipping: data['shipping'],
+    createdAt: data['createdAt']?.toDate?.()?.toISOString?.() ?? null,
+  };
+});
 
 // Creates a minimal donation_request document for walk-in donations
 // (donations that arrive at the warehouse without coming through this app).
 // Keeps the delivery app as the single source of truth for all donations.
-export const createWalkInDonation = onCall(
-  { region: 'us-central1' },
-  async (request) => {
-    const donor = request.data?.donor;
-    if (
-      !donor ||
-      typeof donor.fullName !== 'string' ||
-      typeof donor.email !== 'string' ||
-      typeof donor.phone !== 'string'
-    ) {
-      throw new HttpsError(
-        'invalid-argument',
-        'donor { fullName, email, phone } is required'
-      );
-    }
-
-    const notes =
-      typeof request.data?.notes === 'string' ? request.data.notes : '';
-    const createdAt = Timestamp.now();
-    const requestRef = db.collection('donation_requests').doc();
-    const dropoffReference = generateDropoffReference();
-
-    const donorDoc: Record<string, string> = {
-      fullName: donor.fullName,
-      email: donor.email,
-      phone: donor.phone,
-    };
-    if (typeof donor.donorAccountId === 'string') {
-      donorDoc['donorAccountId'] = donor.donorAccountId;
-    }
-
-    const baseDoc = {
-      donationType: 'dropoff',
-      donor: donorDoc,
-      contribution: {
-        provider: 'givebutter',
-        status: 'skipped',
-      },
-      dropoff: {
-        preferredDate: createdAt.toDate().toISOString().slice(0, 10),
-        preferredTimeWindow: 'walk-in',
-        dropoffNotes: notes,
-        locationName: 'Beauty Forward Warehouse',
-        locationAddress: {
-          line1: '14 53rd St',
-          line2: '#614',
-          city: 'Brooklyn',
-          state: 'NY',
-          postalCode: '11232',
-        },
-        referenceCode: dropoffReference,
-      },
-      status: 'dropoff_requested' satisfies DonationStatus,
-      createdAt,
-      updatedAt: createdAt,
-      metadata: {
-        source: 'ims-walk-in',
-      },
-    };
-
-    await db.runTransaction(async (transaction) => {
-      transaction.set(requestRef, baseDoc);
-      transaction.set(db.collection('dropoff_requests').doc(requestRef.id), {
-        donationRequestId: requestRef.id,
-        ...baseDoc,
-      });
-    });
-
-    return {
-      requestId: requestRef.id,
-      dropoffReference,
-      createdAt: createdAt.toDate().toISOString(),
-    };
+export const createWalkInDonation = onCall({ region: 'us-central1' }, async (request) => {
+  const donor = request.data?.donor;
+  if (
+    !donor ||
+    typeof donor.fullName !== 'string' ||
+    typeof donor.email !== 'string' ||
+    typeof donor.phone !== 'string'
+  ) {
+    throw new HttpsError('invalid-argument', 'donor { fullName, email, phone } is required');
   }
-);
+
+  const notes = typeof request.data?.notes === 'string' ? request.data.notes : '';
+  const createdAt = Timestamp.now();
+  const requestRef = db.collection('donation_requests').doc();
+  const dropoffReference = generateDropoffReference();
+
+  const donorDoc: Record<string, string> = {
+    fullName: donor.fullName,
+    email: donor.email,
+    phone: donor.phone,
+  };
+  if (typeof donor.donorAccountId === 'string') {
+    donorDoc['donorAccountId'] = donor.donorAccountId;
+  }
+
+  const baseDoc = {
+    donationType: 'dropoff',
+    donor: donorDoc,
+    contribution: {
+      provider: 'givebutter',
+      status: 'skipped',
+    },
+    dropoff: {
+      preferredDate: createdAt.toDate().toISOString().slice(0, 10),
+      preferredTimeWindow: 'walk-in',
+      dropoffNotes: notes,
+      locationName: 'Beauty Forward Warehouse',
+      locationAddress: WAREHOUSE_ADDRESS,
+      referenceCode: dropoffReference,
+    },
+    status: 'dropoff_requested' satisfies DonationStatus,
+    createdAt,
+    updatedAt: createdAt,
+    metadata: {
+      source: 'ims-walk-in',
+    },
+  };
+
+  await db.runTransaction(async (transaction) => {
+    transaction.set(requestRef, baseDoc);
+    transaction.set(db.collection('dropoff_requests').doc(requestRef.id), {
+      donationRequestId: requestRef.id,
+      ...baseDoc,
+    });
+  });
+
+  await sendEmailOnce(requestRef.id, 'confirmationEmailSentAt', () =>
+    resendEmailService.sendDropoffConfirmationEmail({
+      donor: { fullName: donor.fullName, email: donor.email, phone: donor.phone },
+      requestId: requestRef.id,
+      status: 'dropoff_requested',
+      dropoff: baseDoc.dropoff,
+      dropoffReference,
+      nextSteps: buildNextSteps('dropoff'),
+    }),
+  );
+
+  return {
+    requestId: requestRef.id,
+    dropoffReference,
+    createdAt: createdAt.toDate().toISOString(),
+  };
+});
 
 function buildNextSteps(type: CreateDonationRequestPayload['donationType']): string[] {
   if (type === 'pickup') {
     return [
       'We will confirm your courier assignment by email and text shortly.',
-      'Please keep your donation packed and accessible during your selected window.'
+      'Please keep your donation packed and accessible during your selected window.',
     ];
   }
 
   if (type === 'shipping') {
     return [
       'We will send shipping label instructions to your email address.',
-      'After shipping, save your receipt so we can trace delivery if needed.'
+      'After shipping, save your receipt so we can trace delivery if needed.',
     ];
   }
 
   return [
     'Bring your donation during the selected window.',
-    'Share your drop-off reference at check-in for fast verification.'
+    'Share your drop-off reference at check-in for fast verification.',
   ];
 }

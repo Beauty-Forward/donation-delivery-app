@@ -28,7 +28,7 @@ export function wrapInBaseLayout(bodyHtml: string): string {
                     <span style="font-family:Arial, sans-serif; font-size:20px; font-weight:700; color:#181000;">Beauty Forward</span>
                     <![endif]-->
                     <!--[if !mso]><!-->
-                    <img src="logo.png" alt="Beauty Forward" width="200" style="display:block; height:auto; border:0;" />
+                    <img src="https://donation-delivery-app--beauty-forward.us-east4.hosted.app/beauty-forward-wordmark.png" alt="Beauty Forward" width="200" style="display:block; height:auto; border:0;" />
                     <!--<![endif]-->
                   </td>
                 </tr>
