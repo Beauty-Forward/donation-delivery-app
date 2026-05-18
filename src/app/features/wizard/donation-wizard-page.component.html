@@ -520,28 +520,53 @@
                 <img id="pixel-heart" src="pixel-heart.webp" />
               </section>
             } @else if (deliveryMethod === 'courier' && confirmationView === 'failed') {
-              <section class="pane pane-submitted pane-failed">
-                <div class="failure-icon">!</div>
-                <h2>We couldn't confirm your donation.</h2>
-                <p class="pane-subtitle">
-                  To schedule a courier pickup we need a ${{ pickupDonationMin }} donation through
-                  Givebutter. <br />Click <strong>Try again</strong> to complete your donation, then
-                  resubmit. <br />Questions? Reach us at <strong>{{ bfEmail }}</strong>
-                </p>
+              @if (failureReason === 'awaiting_payment') {
+                <!--
+                  Givebutter API errored, or Roadie dispatch failed after payment was
+                  verified. The donor may have already paid — we explicitly do NOT
+                  show a "Try again" CTA here, because that would risk a double charge.
+                -->
+                <section class="pane pane-submitted pane-failed">
+                  <div class="failure-icon">!</div>
+                  <h2>We received your donation.</h2>
+                  <p class="pane-subtitle">
+                    We're still confirming your payment. We'll email you at
+                    <strong>{{ form.email }}</strong> within 24 hours with next steps.
+                    <br /><br />
+                    <strong>Please don't donate again</strong> — your donation is on
+                    record. <br />Questions? Reach us at <strong>{{ bfEmail }}</strong>
+                  </p>
 
-                <div class="wizard-nav">
-                  <button type="button" class="btn btn-secondary" (click)="restartFromHome()">
-                    Start over
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-primary"
-                    (click)="tryAgainFromFailedDonation()"
-                  >
-                    Try again →
-                  </button>
-                </div>
-              </section>
+                  <div class="wizard-nav">
+                    <button type="button" class="btn btn-secondary" (click)="restartFromHome()">
+                      Done
+                    </button>
+                  </div>
+                </section>
+              } @else {
+                <section class="pane pane-submitted pane-failed">
+                  <div class="failure-icon">!</div>
+                  <h2>We couldn't confirm your donation.</h2>
+                  <p class="pane-subtitle">
+                    To schedule a courier pickup we need a ${{ pickupDonationMin }} donation through
+                    Givebutter. <br />Click <strong>Try again</strong> to complete your donation, then
+                    resubmit. <br />Questions? Reach us at <strong>{{ bfEmail }}</strong>
+                  </p>
+
+                  <div class="wizard-nav">
+                    <button type="button" class="btn btn-secondary" (click)="restartFromHome()">
+                      Start over
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-primary"
+                      (click)="tryAgainFromFailedDonation()"
+                    >
+                      Try again →
+                    </button>
+                  </div>
+                </section>
+              }
             } @else {
               <section class="pane pane-submitted">
                 <div class="success-icon">✓</div>

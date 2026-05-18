@@ -18,6 +18,7 @@ import {
   DeliveryMethod,
   DonationWizardState,
   DonationWizardStateService,
+  WizardFailureReason,
   WizardFormState,
 } from '../../core/services/donation-wizard-state.service';
 import { DonationApiService } from '../../core/services/donation-api.service';
@@ -205,6 +206,12 @@ export class DonationWizardPageComponent {
   // verified donation amount, 'failed' renders the error pane with a Try-again CTA
   // back to the donation widget. Non-courier flows skip 'verifying' entirely.
   protected confirmationView: ConfirmationView = 'verifying';
+  // When confirmationView is 'failed', this explains *why* so the template can
+  // show truthful copy. 'awaiting_payment' means we cannot yet confirm whether
+  // the donor paid (Givebutter API error, or Roadie dispatch failed *after*
+  // payment was verified) — in that case the failed pane must NOT prompt the
+  // donor to pay again, because they may have already paid.
+  protected failureReason: WizardFailureReason = 'unknown';
   // Amount Givebutter actually confirmed — surfaced on the success pane. Distinct
   // from gbAmountUsd, which is the donor's intended amount captured client-side and
   // can be wrong/missing because the widget event doesn't always propagate.
@@ -686,8 +693,26 @@ export class DonationWizardPageComponent {
     if (result?.status === 'queued_for_dispatch') {
       this.confirmationView = 'success';
       this.verifiedAmountUsd = result.verifiedAmountUsd ?? null;
-    } else {
+      this.failureReason = 'unknown';
+    } else if (
+      result?.status === 'awaiting_payment' ||
+      result?.status === 'verifying_payment'
+    ) {
+      // Givebutter API errored, or Roadie dispatch failed after payment was
+      // already verified. We can't tell from here whether the donor paid, so
+      // do NOT show a "Try again / pay again" CTA — they may have already paid.
       this.confirmationView = 'failed';
+      this.failureReason = 'awaiting_payment';
+    } else if (result?.status === 'payment_verification_failed') {
+      // Givebutter confirmed there's no matching transaction — donor genuinely
+      // didn't pay. "Try again" is the right CTA here.
+      this.confirmationView = 'failed';
+      this.failureReason = 'payment_verification_failed';
+    } else {
+      // Anything else (no result, unexpected status). Fall back to the
+      // generic failed view — same legacy behavior as before this change.
+      this.confirmationView = 'failed';
+      this.failureReason = 'unknown';
     }
     this.persist();
     // Zoneless: callbacks resumed after async boundaries don't auto-trigger CD.
@@ -1031,6 +1056,7 @@ export class DonationWizardPageComponent {
     this.submitted = state.submitted;
     this.submittedRequestId = state.submittedRequestId;
     this.confirmationView = state.confirmationView;
+    this.failureReason = state.failureReason;
     this.verifiedAmountUsd = state.verifiedAmountUsd;
     this.ensureMethodDefaults();
   }
@@ -1049,6 +1075,7 @@ export class DonationWizardPageComponent {
       submitted: this.submitted,
       submittedRequestId: this.submittedRequestId,
       confirmationView: this.confirmationView,
+      failureReason: this.failureReason,
       verifiedAmountUsd: this.verifiedAmountUsd,
     };
   }
@@ -1066,6 +1093,7 @@ export class DonationWizardPageComponent {
     this.submitted = false;
     this.submittedRequestId = null;
     this.confirmationView = 'verifying';
+    this.failureReason = 'unknown';
     this.verifiedAmountUsd = null;
     this.isSubmitting = false;
     this.pickupVerificationStarted = false;
@@ -1135,6 +1163,7 @@ export class DonationWizardPageComponent {
     this.submittedRequestId = null;
     this.submitted = false;
     this.confirmationView = 'verifying';
+    this.failureReason = 'unknown';
     this.isSubmitting = false;
     this.pickupVerificationStarted = false;
     this.cdr.markForCheck();

@@ -19,6 +19,16 @@ export interface WizardFormState {
 
 export type ConfirmationView = 'verifying' | 'success' | 'failed';
 
+// When confirmationView is 'failed', failureReason explains *why* so the wizard
+// can show truthful copy. 'awaiting_payment' means we can't yet confirm whether
+// the donor paid (Givebutter API error, or Roadie dispatch failed after payment
+// was verified) — critically, in this state we must NOT prompt the donor to pay
+// again, because they may have already paid.
+export type WizardFailureReason =
+  | 'awaiting_payment'
+  | 'payment_verification_failed'
+  | 'unknown';
+
 export interface DonationWizardState {
   step: number;
   consentProducts: boolean;
@@ -32,6 +42,7 @@ export interface DonationWizardState {
   submitted: boolean;
   submittedRequestId: string | null;
   confirmationView: ConfirmationView;
+  failureReason: WizardFailureReason;
   verifiedAmountUsd: number | null;
 }
 
@@ -63,6 +74,7 @@ export const DEFAULT_DONATION_WIZARD_STATE: DonationWizardState = {
   submitted: false,
   submittedRequestId: null,
   confirmationView: 'verifying',
+  failureReason: 'unknown',
   verifiedAmountUsd: null,
 };
 
