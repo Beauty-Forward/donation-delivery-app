@@ -152,6 +152,29 @@ describe('ResendEmailService', () => {
     expect(body.html).toContain('quote_123');
   });
 
+  it('posts a donation recovery email referencing the donor email and a CTA', async () => {
+    const { fn, calls } = makeFetchMock([{ status: 200, body: { id: 'email_recovery' } }]);
+    const service = new ResendEmailService(
+      'test-key',
+      'onboarding@resend.dev',
+      'https://api.resend.com',
+      fn
+    );
+
+    await service.sendDonationRecoveryEmail({
+      donor: DONOR,
+      requestId: 'req_recovery'
+    });
+
+    const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
+    expect(body.subject).toMatch(/couldn't find your donation/i);
+    expect(body.to).toEqual(['jane@example.com']);
+    // Includes the donor email in the body so they can verify which address we searched
+    expect(body.html).toContain('jane@example.com');
+    // CTA points at the wizard URL by default
+    expect(body.html).toContain('donation-delivery-app--beauty-forward.us-east4.hosted.app');
+  });
+
   it('posts a dropoff confirmation including the reference code', async () => {
     const { fn, calls } = makeFetchMock([{ status: 200, body: { id: 'email_3' } }]);
     const service = new ResendEmailService(

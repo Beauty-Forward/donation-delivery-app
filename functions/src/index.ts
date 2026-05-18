@@ -64,30 +64,42 @@ const givebutterService = new GivebutterService();
 const hubspotService = new HubspotService();
 const resendEmailService = new ResendEmailService();
 
-// Send a confirmation email at most once per donation_request. Keeps the
-// three pickup trigger paths (callable / onCreate trigger / Givebutter webhook)
-// from each emailing the same donor when they happen to overlap, and survives
-// function retries. Read-then-write is non-transactional on purpose: a duplicate
-// would only be wasted bandwidth, and all callers wrap us in their own happy-path
-// flow, so we swallow send failures rather than propagate them.
-async function sendConfirmationOnce(requestId: string, send: () => Promise<void>): Promise<void> {
+// Send an email at most once per donation_request, keyed by a named flag on the
+// doc. Keeps overlapping code paths (callable + onCreate trigger + Givebutter
+// webhook recovery) from each emailing the same donor, and survives function
+// retries. Each email type uses its own flag name:
+//
+//   'confirmationEmailSentAt' — success-path emails (pickup / shipping / dropoff)
+//   'recoveryEmailSentAt'     — not_found recovery email
+//
+// Read-then-write is non-transactional on purpose: a duplicate would only be
+// wasted bandwidth, and all callers are wrapped in their own happy-path flow,
+// so we swallow send failures rather than propagate them.
+type EmailIdempotencyFlag = 'confirmationEmailSentAt' | 'recoveryEmailSentAt';
+
+async function sendEmailOnce(
+  requestId: string,
+  flagName: EmailIdempotencyFlag,
+  send: () => Promise<void>,
+): Promise<void> {
   const ref = db.collection('donation_requests').doc(requestId);
   const snap = await ref.get();
-  if (snap.data()?.['confirmationEmailSentAt']) {
-    console.info('[resend] skip: confirmationEmailSentAt already set', { requestId });
+  if (snap.data()?.[flagName]) {
+    console.info('[resend] skip: already sent', { requestId, flagName });
     return;
   }
-  console.info('[resend] attempting confirmation send', {
+  console.info('[resend] attempting send', {
     requestId,
+    flagName,
     apiKeyConfigured: (process.env['RESEND_API_KEY'] ?? '').length > 0,
     fromEmail: process.env['RESEND_FROM_EMAIL'] ?? 'onboarding@resend.dev',
   });
   try {
     await send();
-    await ref.set({ confirmationEmailSentAt: Timestamp.now() }, { merge: true });
-    console.info('[resend] confirmation send completed', { requestId });
+    await ref.set({ [flagName]: Timestamp.now() }, { merge: true });
+    console.info('[resend] send completed', { requestId, flagName });
   } catch (err) {
-    console.warn('Confirmation email send failed', { requestId, err });
+    console.warn('Email send failed', { requestId, flagName, err });
   }
 }
 
@@ -130,7 +142,6 @@ export const createDonationRequest = onCall(
     }
 
     if (payload.donationType === 'dropoff' && payload.dropoff) {
-      console.log('The dropoff was in fact requested');
       status = 'dropoff_requested';
       dropoffReference = generateDropoffReference();
       payload.dropoff.referenceCode = dropoffReference;
@@ -168,7 +179,7 @@ export const createDonationRequest = onCall(
     // success moment, so email the donor here. Pickup waits until verification +
     // dispatch resolves below.
     if (payload.donationType === 'shipping' && payload.shipping) {
-      await sendConfirmationOnce(requestRef.id, () =>
+      await sendEmailOnce(requestRef.id, 'confirmationEmailSentAt', () =>
         resendEmailService.sendShippingConfirmationEmail({
           donor: payload.donor,
           requestId: requestRef.id,
@@ -183,7 +194,7 @@ export const createDonationRequest = onCall(
 
     if (payload.donationType === 'dropoff' && payload.dropoff) {
       console.log('yeah hi, this fired');
-      await sendConfirmationOnce(requestRef.id, () =>
+      await sendEmailOnce(requestRef.id, 'confirmationEmailSentAt', () =>
         resendEmailService.sendDropoffConfirmationEmail({
           donor: payload.donor,
           requestId: requestRef.id,
@@ -206,7 +217,6 @@ export const createDonationRequest = onCall(
         payload.pickup,
         {
           givebutterService,
-          resendEmailService,
           courierProvider: getCourierProvider(),
         },
       );
@@ -235,9 +245,6 @@ export const createDonationRequest = onCall(
           ...(verification.failureReason
             ? { verificationFailureReason: verification.failureReason }
             : {}),
-          ...(verification.amountPaid != null
-            ? { verificationAmountPaid: verification.amountPaid }
-            : {}),
         },
         updatedAt: Timestamp.now(),
       };
@@ -250,7 +257,7 @@ export const createDonationRequest = onCall(
       });
 
       if (verification.status === 'queued_for_dispatch') {
-        await sendConfirmationOnce(requestRef.id, () =>
+        await sendEmailOnce(requestRef.id, 'confirmationEmailSentAt', () =>
           resendEmailService.sendPickupConfirmationEmail({
             donor: payload.donor,
             requestId: requestRef.id,
@@ -258,6 +265,19 @@ export const createDonationRequest = onCall(
             pickup: payload.pickup!,
             courierDispatchId,
             nextSteps: buildNextSteps('pickup'),
+          }),
+        );
+      } else if (
+        verification.status === 'payment_verification_failed' &&
+        verification.failureReason === 'not_found'
+      ) {
+        // Immediate recovery nudge while the wizard surfaces the rejection in-app.
+        // Once the 24h scheduled-loop work in #64 lands, this immediate send moves
+        // behind an onSchedule trigger that queries stalled donations daily.
+        await sendEmailOnce(requestRef.id, 'recoveryEmailSentAt', () =>
+          resendEmailService.sendDonationRecoveryEmail({
+            donor: payload.donor,
+            requestId: requestRef.id,
           }),
         );
       }
@@ -362,7 +382,6 @@ export const verifyContributionAndDispatch = onDocumentCreated(
     // the callable times out) skips the synchronous verification, so we run it here.
     const verification = await verifyAndDispatchPickup(requestId, data['donor'], data['pickup'], {
       givebutterService,
-      resendEmailService,
       courierProvider: getCourierProvider(),
     });
 
@@ -385,9 +404,6 @@ export const verifyContributionAndDispatch = onDocumentCreated(
         ...(verification.failureReason
           ? { verificationFailureReason: verification.failureReason }
           : {}),
-        ...(verification.amountPaid != null
-          ? { verificationAmountPaid: verification.amountPaid }
-          : {}),
       },
       updatedAt: Timestamp.now(),
     };
@@ -396,7 +412,7 @@ export const verifyContributionAndDispatch = onDocumentCreated(
     await db.collection('pickup_requests').doc(requestId).set(update, { merge: true });
 
     if (verification.status === 'queued_for_dispatch') {
-      await sendConfirmationOnce(requestId, () =>
+      await sendEmailOnce(requestId, 'confirmationEmailSentAt', () =>
         resendEmailService.sendPickupConfirmationEmail({
           donor: data['donor'],
           requestId,
@@ -404,6 +420,18 @@ export const verifyContributionAndDispatch = onDocumentCreated(
           pickup: data['pickup'],
           courierDispatchId: verification.courierDispatchId,
           nextSteps: buildNextSteps('pickup'),
+        }),
+      );
+    } else if (
+      verification.status === 'payment_verification_failed' &&
+      verification.failureReason === 'not_found'
+    ) {
+      // Backstop recovery send for the direct-Firestore-write fallback path,
+      // mirroring the inline send in createDonationRequest. See #64.
+      await sendEmailOnce(requestId, 'recoveryEmailSentAt', () =>
+        resendEmailService.sendDonationRecoveryEmail({
+          donor: data['donor'],
+          requestId,
         }),
       );
     }
@@ -515,7 +543,7 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
             { merge: true },
           );
 
-        await sendConfirmationOnce(requestId, () =>
+        await sendEmailOnce(requestId, 'confirmationEmailSentAt', () =>
           resendEmailService.sendPickupConfirmationEmail({
             donor: data['donor'],
             requestId,
@@ -677,7 +705,7 @@ export const createWalkInDonation = onCall({ region: 'us-central1' }, async (req
     });
   });
 
-  await sendConfirmationOnce(requestRef.id, () =>
+  await sendEmailOnce(requestRef.id, 'confirmationEmailSentAt', () =>
     resendEmailService.sendDropoffConfirmationEmail({
       donor: { fullName: donor.fullName, email: donor.email, phone: donor.phone },
       requestId: requestRef.id,

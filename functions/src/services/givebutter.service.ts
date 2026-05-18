@@ -1,15 +1,17 @@
 import { ContributionSessionResponse, CreateContributionSessionPayload } from '../models.js';
 
-// Discriminated union returned by fetchTransactionBySessionId. The verification
-// trigger branches on `kind` to decide whether to dispatch the courier, mark the
+// Discriminated union returned by findRecentTransactionForDonor. The verification
+// path branches on `kind` to decide whether to dispatch the courier, mark the
 // request as failed (and email the donor), or fall back to the webhook recovery path.
+//
+// `reason: 'not_found'` is the only rejection variant today: the Givebutter widget
+// enforces the donation minimum on its side, and widget payments are atomic (either
+// they happened or they didn't — there's no "incomplete" state we observe).
+// `incomplete` and `amount_below_minimum` were defensive branches; both were dead.
+// If Givebutter's behavior diverges in the future, expand this union explicitly.
 export type GivebutterVerification =
   | { kind: 'verified'; amountUsd: number; transactionId: string }
-  | {
-      kind: 'rejected';
-      reason: 'not_found' | 'incomplete' | 'amount_below_minimum';
-      amountUsd?: number;
-    }
+  | { kind: 'rejected'; reason: 'not_found' }
   | { kind: 'error'; reason: string };
 
 export class GivebutterService {
@@ -85,8 +87,6 @@ export class GivebutterService {
     try {
       const maxPages = 5;
       const perPage = 50;
-      let bestMatchAmount: number | undefined;
-      let foundAnyEmailMatch = false;
 
       for (let page = 1; page <= maxPages; page += 1) {
         const url = `${this.apiBaseUrl}/transactions?per_page=${perPage}&page=${page}`;
@@ -139,8 +139,7 @@ export class GivebutterService {
 
           const status = typeof txn.status === 'string' ? txn.status.toLowerCase() : '';
           if (status && status !== 'succeeded' && status !== 'completed' && status !== 'paid') {
-            // Email match but payment didn't complete; remember as a partial signal.
-            foundAnyEmailMatch = true;
+            // Email match but payment status isn't terminal-success — skip.
             continue;
           }
 
@@ -154,7 +153,6 @@ export class GivebutterService {
                   : undefined;
 
           if (amountPaid === undefined) {
-            foundAnyEmailMatch = true;
             continue;
           }
 
@@ -166,10 +164,9 @@ export class GivebutterService {
             };
           }
 
-          // Email match but under minimum — track the largest under-minimum amount we
-          // saw so the rejection message is precise.
-          foundAnyEmailMatch = true;
-          bestMatchAmount = Math.max(bestMatchAmount ?? 0, amountPaid);
+          // Email match but under our minimum — Givebutter's widget enforces the
+          // minimum on its side, so this shouldn't happen for app-originated donations.
+          // Treat as not_found (donor never made a valid pickup donation).
         }
 
         if (crossedCutoff) {
@@ -181,13 +178,6 @@ export class GivebutterService {
         }
       }
 
-      if (foundAnyEmailMatch) {
-        return {
-          kind: 'rejected',
-          reason: 'amount_below_minimum',
-          amountUsd: bestMatchAmount,
-        };
-      }
       return { kind: 'rejected', reason: 'not_found' };
     } catch (err) {
       const reason =

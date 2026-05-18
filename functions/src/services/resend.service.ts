@@ -16,6 +16,10 @@ import {
   buildDropoffConfirmationEmail,
   type DropoffConfirmationEmailData
 } from '../email/templates/dropoff-confirmation.js';
+import {
+  buildDonationRecoveryEmail,
+  type DonationRecoveryEmailData
+} from '../email/templates/donation-recovery.js';
 
 export class ResendEmailService {
   constructor(
@@ -37,6 +41,11 @@ export class ResendEmailService {
 
   async sendDropoffConfirmationEmail(data: DropoffConfirmationEmailData): Promise<void> {
     const { subject, html } = buildDropoffConfirmationEmail(data);
+    await this.send({ to: data.donor.email, subject, html });
+  }
+
+  async sendDonationRecoveryEmail(data: DonationRecoveryEmailData): Promise<void> {
+    const { subject, html } = buildDonationRecoveryEmail(data);
     await this.send({ to: data.donor.email, subject, html });
   }
 
