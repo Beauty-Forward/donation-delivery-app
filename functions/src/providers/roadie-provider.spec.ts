@@ -134,7 +134,6 @@ describe('RoadieCourierProvider', () => {
     expect(body.pickup_location.contact).toEqual({
       name: 'Jane Donor',
       phone: '5551234567',
-      email: 'jane@example.com',
     });
     expect(body.delivery_location.address).toEqual({
       street1: '789 Warehouse Way',
