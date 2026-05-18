@@ -24,19 +24,17 @@ export function buildDonationRecoveryEmail(data: DonationRecoveryEmailData): {
   const { donor, ctaUrl = DEFAULT_CTA_URL } = data;
 
   const body = `
-    ${eyebrowHtml('Donation not found')}
-    ${headingHtml("We couldn't find your donation")}
+    ${eyebrowHtml('Still waiting')}
+    ${headingHtml('Want to finish your pickup?')}
     ${bodyTextHtml(
-      `Hi ${donor.fullName}, you submitted a pickup request but we didn't see a matching donation through Givebutter using <strong>${donor.email}</strong>. If you'd still like to donate to Beauty Forward, tap below to start a new request.`,
+      `Hi ${donor.fullName} — you started a pickup with Beauty Forward and then life got in the way (we get it). Those untouched PR boxes and unused beauty products taking up space at your place? Women in shelters would actually love them.`,
     )}
-    ${bodyTextHtml(
-      `If you think this is a mistake — for example, you donated using a different email — reply to this email and we'll sort it out.`,
-    )}
-    ${ctaButtonHtml('Start a new donation', ctaUrl)}
+    ${bodyTextHtml(`Tap below whenever you're ready. No pressure.`)}
+    ${ctaButtonHtml('Finish my pickup', ctaUrl)}
   `;
 
   return {
-    subject: "We couldn't find your donation",
+    subject: 'your pickup is still here ✨',
     html: wrapInBaseLayout(body),
   };
 }

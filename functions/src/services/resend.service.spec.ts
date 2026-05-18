@@ -167,10 +167,11 @@ describe('ResendEmailService', () => {
     });
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
-    expect(body.subject).toMatch(/couldn't find your donation/i);
+    expect(body.subject).toMatch(/pickup is still here/i);
     expect(body.to).toEqual(['jane@example.com']);
-    // Includes the donor email in the body so they can verify which address we searched
-    expect(body.html).toContain('jane@example.com');
+    // Abandoned-cart framing: addresses the donor warmly and reminds them of the action.
+    expect(body.html).toContain('Jane Rivera');
+    expect(body.html).toMatch(/finish my pickup/i);
     // CTA points at the wizard URL by default
     expect(body.html).toContain('donation-delivery-app--beauty-forward.us-east4.hosted.app');
   });
