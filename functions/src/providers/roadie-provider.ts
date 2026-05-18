@@ -104,9 +104,7 @@ export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadO
 
   return {
     reference_id: requestId,
-    description: pickup.donationNotes
-      ? `Beauty Forward donation pickup. Notes: ${pickup.donationNotes}`
-      : 'Beauty Forward donation pickup',
+    description: 'Beauty Forward donation pickup',
     items: [
       {
         description: 'Beauty product donation',
@@ -119,6 +117,7 @@ export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadO
     ],
     pickup_location: {
       address: toRoadieAddress(pickup.pickupAddress),
+      notes: pickup.donationNotes ?? undefined,
       contact: {
         name: donor.fullName,
         phone: donor.phone,
@@ -128,6 +127,7 @@ export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadO
     },
     delivery_location: {
       address: toRoadieAddress(pickup.warehouseAddress),
+      notes: pickup.warehouseAddress.instructions ?? undefined,
       contact: {
         name: opts.warehouseContactName,
         phone: opts.warehouseContactPhone,
