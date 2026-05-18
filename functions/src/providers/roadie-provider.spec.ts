@@ -42,7 +42,6 @@ const farFutureInput: CourierDispatchInput = {
       city: 'Brooklyn',
       state: 'NY',
       postalCode: '11201',
-      instructions: 'Leave at door',
     },
     preferredDate: '2099-05-20',
     preferredTimeWindow: '9am-12pm',
@@ -136,7 +135,6 @@ describe('RoadieCourierProvider', () => {
       name: 'Jane Donor',
       phone: '5551234567',
       email: 'jane@example.com',
-      notes: 'Leave at door',
     });
     expect(body.delivery_location.address).toEqual({
       street1: '789 Warehouse Way',

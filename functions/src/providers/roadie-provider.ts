@@ -122,7 +122,6 @@ export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadO
         name: donor.fullName,
         phone: donor.phone,
         email: donor.email,
-        notes: pickup.pickupAddress.instructions ?? undefined,
       },
     },
     delivery_location: {
