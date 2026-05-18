@@ -28,7 +28,7 @@ export function wrapInBaseLayout(bodyHtml: string): string {
                     <span style="font-family:Arial, sans-serif; font-size:20px; font-weight:700; color:#181000;">Beauty Forward</span>
                     <![endif]-->
                     <!--[if !mso]><!-->
-                    <img src="https://beauty-forward.web.app/beauty-forward-wordmark.png" alt="Beauty Forward" width="200" style="display:block; height:auto; border:0;" />
+                    <img src="logo.png" alt="Beauty Forward" width="200" style="display:block; height:auto; border:0;" />
                     <!--<![endif]-->
                   </td>
                 </tr>
@@ -76,7 +76,13 @@ export function wrapInBaseLayout(bodyHtml: string): string {
 </html>`;
 }
 
-export function formatAddress(address: { line1: string; line2?: string; city: string; state: string; postalCode: string }): string {
+export function formatAddress(address: {
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postalCode: string;
+}): string {
   const line2 = address.line2 ? `${address.line2}, ` : '';
   return `${address.line1}, ${line2}${address.city}, ${address.state} ${address.postalCode}`;
 }
@@ -121,9 +127,12 @@ export function sectionHeadingHtml(text: string): string {
 }
 
 export function nextStepsHtml(heading: string, steps: string[]): string {
-  const items = steps.map(step =>
-    `<li style="margin-bottom:6px; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:#6b6560; line-height:1.5;">${step}</li>`
-  ).join('\n          ');
+  const items = steps
+    .map(
+      (step) =>
+        `<li style="margin-bottom:6px; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:#6b6560; line-height:1.5;">${step}</li>`,
+    )
+    .join('\n          ');
 
   return `${sectionHeadingHtml(heading)}
       <ul style="margin:0; padding-left:18px;">
