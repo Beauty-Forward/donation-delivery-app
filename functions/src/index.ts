@@ -20,6 +20,8 @@ import {
   CreateDonationRequestPayload,
   DonationStatus,
   DonationSubmissionResult,
+  DonorInfo,
+  PickupDetails,
 } from './models.js';
 import { MockRoadieCourierProvider } from './providers/mock-roadie-provider.js';
 import { RoadieCourierProvider } from './providers/roadie-provider.js';
@@ -101,6 +103,29 @@ async function sendEmailOnce(
   } catch (err) {
     console.warn('Email send failed', { requestId, flagName, err });
   }
+}
+
+// A pickup_request hits `queued_for_dispatch` via three different code paths:
+// the synchronous callable, the onCreate backstop trigger, and the Givebutter
+// webhook recovery. Each used to inline the same pickup-confirmation send.
+// Centralizing here so the email payload (and any future tweaks like analytics
+// hooks) lives in one place.
+async function notifyPickupQueued(
+  requestId: string,
+  donor: DonorInfo,
+  pickup: PickupDetails,
+  courierDispatchId: string | undefined,
+): Promise<void> {
+  await sendEmailOnce(requestId, 'confirmationEmailSentAt', () =>
+    resendEmailService.sendPickupConfirmationEmail({
+      donor,
+      requestId,
+      status: 'queued_for_dispatch',
+      pickup,
+      courierDispatchId,
+      nextSteps: buildNextSteps('pickup'),
+    }),
+  );
 }
 
 export const createDonationRequest = onCall(
@@ -257,16 +282,7 @@ export const createDonationRequest = onCall(
       });
 
       if (verification.status === 'queued_for_dispatch') {
-        await sendEmailOnce(requestRef.id, 'confirmationEmailSentAt', () =>
-          resendEmailService.sendPickupConfirmationEmail({
-            donor: payload.donor,
-            requestId: requestRef.id,
-            status: 'queued_for_dispatch',
-            pickup: payload.pickup!,
-            courierDispatchId,
-            nextSteps: buildNextSteps('pickup'),
-          }),
-        );
+        await notifyPickupQueued(requestRef.id, payload.donor, payload.pickup!, courierDispatchId);
       } else if (
         verification.status === 'payment_verification_failed' &&
         verification.failureReason === 'not_found'
@@ -412,16 +428,7 @@ export const verifyContributionAndDispatch = onDocumentCreated(
     await db.collection('pickup_requests').doc(requestId).set(update, { merge: true });
 
     if (verification.status === 'queued_for_dispatch') {
-      await sendEmailOnce(requestId, 'confirmationEmailSentAt', () =>
-        resendEmailService.sendPickupConfirmationEmail({
-          donor: data['donor'],
-          requestId,
-          status: 'queued_for_dispatch',
-          pickup: data['pickup'],
-          courierDispatchId: verification.courierDispatchId,
-          nextSteps: buildNextSteps('pickup'),
-        }),
-      );
+      await notifyPickupQueued(requestId, data['donor'], data['pickup'], verification.courierDispatchId);
     } else if (
       verification.status === 'payment_verification_failed' &&
       verification.failureReason === 'not_found'
@@ -543,16 +550,7 @@ export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, asyn
             { merge: true },
           );
 
-        await sendEmailOnce(requestId, 'confirmationEmailSentAt', () =>
-          resendEmailService.sendPickupConfirmationEmail({
-            donor: data['donor'],
-            requestId,
-            status: 'queued_for_dispatch',
-            pickup: data['pickup'],
-            courierDispatchId: dispatch.dispatchId,
-            nextSteps: buildNextSteps('pickup'),
-          }),
-        );
+        await notifyPickupQueued(requestId, data['donor'], data['pickup'], dispatch.dispatchId);
       } catch (err) {
         console.error('Courier dispatch failed after payment confirmation', err);
       }
