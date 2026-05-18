@@ -98,7 +98,7 @@ export class PickupReviewPageComponent {
         pickupAddress: this.draft.pickupAddress,
         preferredDate: this.draft.preferredDate,
         preferredTimeWindow: this.draft.preferredTimeWindow,
-        donationNotes: this.draft.donationNotes,
+        courierNotes: this.draft.courierNotes,
         warehouseAddress: this.warehouse.address
       },
       metadata: {

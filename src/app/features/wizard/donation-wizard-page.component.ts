@@ -750,7 +750,7 @@ export class DonationWizardPageComponent {
         pickupAddress: this.buildDonorAddress(donorCity, donorState),
         preferredDate: this.selectedDate ?? '',
         preferredTimeWindow: this.selectedTime ?? '',
-        donationNotes: this.form.courierNotes || undefined,
+        courierNotes: this.form.courierNotes || undefined,
         warehouseAddress,
       };
     } else if (donationType === 'dropoff') {

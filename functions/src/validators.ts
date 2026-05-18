@@ -36,7 +36,7 @@ const pickupSchema = z.object({
   pickupAddress: addressSchema,
   preferredDate: z.string().min(4),
   preferredTimeWindow: z.string().min(4),
-  donationNotes: z.string().optional(),
+  courierNotes: z.string().optional(),
   warehouseAddress: addressSchema,
 });
 

@@ -117,7 +117,7 @@ export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadO
     ],
     pickup_location: {
       address: toRoadieAddress(pickup.pickupAddress),
-      notes: pickup.donationNotes ?? undefined,
+      notes: pickup.courierNotes ?? undefined,
       contact: {
         name: donor.fullName,
         phone: donor.phone,

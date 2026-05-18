@@ -46,7 +46,7 @@ const farFutureInput: CourierDispatchInput = {
     },
     preferredDate: '2099-05-20',
     preferredTimeWindow: '9am-12pm',
-    donationNotes: 'Two boxes of skincare',
+    courierNotes: 'Buzz apt 4B, leave with doorman',
     warehouseAddress: {
       line1: '789 Warehouse Way',
       city: 'Queens',
@@ -131,7 +131,7 @@ describe('RoadieCourierProvider', () => {
       state: 'NY',
       zip: '11201',
     });
-    expect(body.pickup_location.notes).toBe('Two boxes of skincare');
+    expect(body.pickup_location.notes).toBe('Buzz apt 4B, leave with doorman');
     expect(body.pickup_location.contact).toEqual({
       name: 'Jane Donor',
       phone: '5551234567',
@@ -264,15 +264,16 @@ describe('buildTimeWindow', () => {
 });
 
 describe('buildShipmentPayload', () => {
-  it('omits donor notes from description when absent', () => {
+  it('keeps a clean description regardless of whether courier notes are set', () => {
     const input: CourierDispatchInput = {
       ...farFutureInput,
-      pickup: { ...farFutureInput.pickup, donationNotes: undefined },
+      pickup: { ...farFutureInput.pickup, courierNotes: undefined },
     };
     const body = buildShipmentPayload(input, {
       warehouseContactName: 'W',
       warehouseContactPhone: '5550000000',
     });
     expect(body.description).toBe('Beauty Forward donation pickup');
+    expect(body.pickup_location.notes).toBeUndefined();
   });
 });
