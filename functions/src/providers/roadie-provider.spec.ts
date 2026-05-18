@@ -253,6 +253,33 @@ describe('buildTimeWindow', () => {
     expect(deliverEnd.toISOString()).toBe('2099-05-21T01:00:00.000Z');
   });
 
+  it.each([
+    {
+      window: '9:00 AM - 11:00 AM',
+      expectedPickup: '2099-05-20T13:00:00.000Z',
+      expectedDeliverEnd: '2099-05-20T19:00:00.000Z',
+    },
+    {
+      window: '11:00 AM - 1:00 PM',
+      expectedPickup: '2099-05-20T15:00:00.000Z',
+      expectedDeliverEnd: '2099-05-20T21:00:00.000Z',
+    },
+    {
+      window: '1:00 PM - 3:00 PM',
+      expectedPickup: '2099-05-20T17:00:00.000Z',
+      expectedDeliverEnd: '2099-05-20T23:00:00.000Z',
+    },
+    {
+      window: '3:00 PM - 5:00 PM',
+      expectedPickup: '2099-05-20T19:00:00.000Z',
+      expectedDeliverEnd: '2099-05-21T01:00:00.000Z',
+    },
+  ])('handles wizard pickup window "$window"', ({ window, expectedPickup, expectedDeliverEnd }) => {
+    const { pickupAfter, deliverEnd } = buildTimeWindow('2099-05-20', window);
+    expect(pickupAfter.toISOString()).toBe(expectedPickup);
+    expect(deliverEnd.toISOString()).toBe(expectedDeliverEnd);
+  });
+
   it('pushes pickupAfter forward when the window is in the past', () => {
     const { pickupAfter, deliverEnd } = buildTimeWindow('2000-01-01', '9am-12pm');
     expect(pickupAfter.getTime()).toBeGreaterThanOrEqual(Date.now());
