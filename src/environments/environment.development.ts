@@ -30,6 +30,7 @@ export const environment = {
       mockCheckoutUrl: 'https://shippo.com',
     },
   },
+  email: 'info@beauty-forward.org',
   // Lowered from $15 in dev so the pickup-donation gate is testable without paying full price.
   pickupDonationMinimumUsd: 1,
 };
