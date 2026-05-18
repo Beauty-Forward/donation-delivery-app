@@ -39,9 +39,9 @@ export function buildPickupConfirmationEmail(data: PickupConfirmationEmailData):
     gridRowHtml('Destination', formatAddress(pickup.warehouseAddress)),
   ].join('');
 
-  const notesSection = pickup.donationNotes
-    ? `${sectionHeadingHtml('Donation Notes')}
-      <p style="margin:0; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:#6b6560; line-height:1.5;">${pickup.donationNotes}</p>`
+  const notesSection = pickup.courierNotes
+    ? `${sectionHeadingHtml('Notes for the Courier')}
+      <p style="margin:0; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:#6b6560; line-height:1.5;">${pickup.courierNotes}</p>`
     : '';
 
   const body = `

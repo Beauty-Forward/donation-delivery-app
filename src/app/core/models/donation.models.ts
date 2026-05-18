@@ -50,7 +50,7 @@ export interface PickupDetails {
   pickupAddress: AddressInfo;
   preferredDate: string;
   preferredTimeWindow: string;
-  donationNotes?: string;
+  courierNotes?: string;
   warehouseAddress: AddressInfo;
 }
 
@@ -76,7 +76,7 @@ export interface PickupFlowDraft {
   pickupAddress: AddressInfo;
   preferredDate: string;
   preferredTimeWindow: string;
-  donationNotes?: string;
+  courierNotes?: string;
   contributionAmountUsd?: number;
   contributionCheckoutStarted?: boolean;
   contributionCheckoutUrl?: string;

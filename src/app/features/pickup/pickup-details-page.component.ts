@@ -34,7 +34,7 @@ export class PickupDetailsPageComponent {
     instructions: [''],
     preferredDate: ['', [Validators.required]],
     preferredTimeWindow: ['', [Validators.required]],
-    donationNotes: [''],
+    courierNotes: [''],
     contributionAmount: ['']
   });
 
@@ -53,7 +53,7 @@ export class PickupDetailsPageComponent {
         instructions: draft.pickupAddress.instructions ?? '',
         preferredDate: draft.preferredDate,
         preferredTimeWindow: draft.preferredTimeWindow,
-        donationNotes: draft.donationNotes ?? '',
+        courierNotes: draft.courierNotes ?? '',
         contributionAmount: draft.contributionAmountUsd?.toString() ?? ''
       });
     }
@@ -82,7 +82,7 @@ export class PickupDetailsPageComponent {
       },
       preferredDate: value.preferredDate,
       preferredTimeWindow: value.preferredTimeWindow,
-      donationNotes: value.donationNotes,
+      courierNotes: value.courierNotes,
       contributionAmountUsd: this.parseAmount(value.contributionAmount)
     };
 
