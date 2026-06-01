@@ -207,10 +207,12 @@ export class DonationWizardPageComponent {
   // back to the donation widget. Non-courier flows skip 'verifying' entirely.
   protected confirmationView: ConfirmationView = 'verifying';
   // When confirmationView is 'failed', this explains *why* so the template can
-  // show truthful copy. 'awaiting_payment' means we cannot yet confirm whether
-  // the donor paid (Givebutter API error, or Roadie dispatch failed *after*
-  // payment was verified) — in that case the failed pane must NOT prompt the
-  // donor to pay again, because they may have already paid.
+  // show truthful copy. The awaiting_payment variants must NOT prompt the donor
+  // to pay again: 'payment_verified_dispatch_failed' means Givebutter confirmed
+  // payment but the courier booking failed (they definitely paid), and
+  // 'awaiting_payment' means Givebutter's API was unreachable so we can't yet
+  // tell (they may have paid). Only 'payment_verification_failed' is a real
+  // "no payment found", where the Try-again CTA is correct.
   protected failureReason: WizardFailureReason = 'unknown';
   // Amount Givebutter actually confirmed — surfaced on the success pane. Distinct
   // from gbAmountUsd, which is the donor's intended amount captured client-side and
@@ -698,19 +700,27 @@ export class DonationWizardPageComponent {
       result?.status === 'awaiting_payment' ||
       result?.status === 'verifying_payment'
     ) {
-      // Givebutter API errored, or Roadie dispatch failed after payment was
-      // already verified. We can't tell from here whether the donor paid, so
-      // do NOT show a "Try again / pay again" CTA — they may have already paid.
+      // Two distinct awaiting_payment cases, told apart by the backend's
+      // failureReason. Neither shows a "Try again / pay again" CTA.
       this.confirmationView = 'failed';
-      this.failureReason = 'awaiting_payment';
+      if (result?.failureReason === 'courier_dispatch_failed') {
+        // Givebutter confirmed payment; only the Roadie courier booking failed.
+        // We KNOW the donor paid — reassure them and surface the verified amount.
+        this.failureReason = 'payment_verified_dispatch_failed';
+        this.verifiedAmountUsd = result.verifiedAmountUsd ?? null;
+      } else {
+        // Givebutter's API was unreachable, so we can't yet tell whether the
+        // donor paid. Acknowledge the request and say we're still confirming.
+        this.failureReason = 'awaiting_payment';
+      }
     } else if (result?.status === 'payment_verification_failed') {
       // Givebutter confirmed there's no matching transaction — donor genuinely
       // didn't pay. "Try again" is the right CTA here.
       this.confirmationView = 'failed';
       this.failureReason = 'payment_verification_failed';
     } else {
-      // Anything else (no result, unexpected status). Fall back to the
-      // generic failed view — same legacy behavior as before this change.
+      // Anything else (no result, unexpected status). Fall back to the generic
+      // failed view with the Try-again CTA — same behavior as before this change.
       this.confirmationView = 'failed';
       this.failureReason = 'unknown';
     }

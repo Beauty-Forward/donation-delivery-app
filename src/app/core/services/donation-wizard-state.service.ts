@@ -20,11 +20,17 @@ export interface WizardFormState {
 export type ConfirmationView = 'verifying' | 'success' | 'failed';
 
 // When confirmationView is 'failed', failureReason explains *why* so the wizard
-// can show truthful copy. 'awaiting_payment' means we can't yet confirm whether
-// the donor paid (Givebutter API error, or Roadie dispatch failed after payment
-// was verified) — critically, in this state we must NOT prompt the donor to pay
-// again, because they may have already paid.
+// can show truthful copy. The two awaiting_payment variants must NOT prompt the
+// donor to pay again, because they may have (or definitely have) already paid:
+//   - 'payment_verified_dispatch_failed': Givebutter confirmed payment, but the
+//     Roadie courier booking failed. We KNOW they paid — reassure them and tell
+//     them we'll confirm the pickup.
+//   - 'awaiting_payment': Givebutter's API was unreachable, so we can't yet tell
+//     whether they paid. Acknowledge the request and say we're still confirming.
+//   - 'payment_verification_failed': Givebutter definitively found no payment.
+//     This is a real "we couldn't confirm" — the Try-again CTA is correct here.
 export type WizardFailureReason =
+  | 'payment_verified_dispatch_failed'
   | 'awaiting_payment'
   | 'payment_verification_failed'
   | 'unknown';

@@ -520,21 +520,44 @@
                 <img id="pixel-heart" src="pixel-heart.webp" />
               </section>
             } @else if (deliveryMethod === 'courier' && confirmationView === 'failed') {
-              @if (failureReason === 'awaiting_payment') {
+              @if (failureReason === 'payment_verified_dispatch_failed') {
                 <!--
-                  Givebutter API errored, or Roadie dispatch failed after payment was
-                  verified. The donor may have already paid — we explicitly do NOT
-                  show a "Try again" CTA here, because that would risk a double charge.
+                  Givebutter confirmed the payment, but the Roadie courier booking
+                  failed. The donor has definitely paid, so we reassure them and do
+                  NOT show a "Try again" CTA — there is nothing for them to redo.
                 -->
                 <section class="pane pane-submitted pane-failed">
                   <div class="failure-icon">!</div>
-                  <h2>We received your donation.</h2>
+                  <h2>We've got your donation.</h2>
+                  <p class="pane-subtitle">
+                    We can see your payment came through — thank you! We're just
+                    having trouble booking a courier right now. We'll confirm your
+                    pickup within 24 hours by email at <strong>{{ form.email }}</strong>.
+                    <br /><br />
+                    There's nothing you need to do. <br />Questions? Reach us at
+                    <strong>{{ bfEmail }}</strong>
+                  </p>
+
+                  <div class="wizard-nav">
+                    <button type="button" class="btn btn-secondary" (click)="restartFromHome()">
+                      Done
+                    </button>
+                  </div>
+                </section>
+              } @else if (failureReason === 'awaiting_payment') {
+                <!--
+                  Givebutter's API was unreachable, so we can't yet tell whether the
+                  donor paid. We acknowledge the request and do NOT show a "Try again"
+                  CTA, because prompting a donor who already paid to pay again would
+                  risk a double charge.
+                -->
+                <section class="pane pane-submitted pane-failed">
+                  <div class="failure-icon">!</div>
+                  <h2>We've received your request.</h2>
                   <p class="pane-subtitle">
                     We're still confirming your payment. We'll email you at
                     <strong>{{ form.email }}</strong> within 24 hours with next steps.
-                    <br /><br />
-                    <strong>Please don't donate again</strong> — your donation is on
-                    record. <br />Questions? Reach us at <strong>{{ bfEmail }}</strong>
+                    <br />Questions? Reach us at <strong>{{ bfEmail }}</strong>
                   </p>
 
                   <div class="wizard-nav">
@@ -544,6 +567,12 @@
                   </div>
                 </section>
               } @else {
+                <!--
+                  Givebutter confirmed there's no matching payment (or an unexpected
+                  cold-landing state). This is a genuine "we couldn't confirm" — the
+                  donor really needs to complete the donation, so the Try-again CTA
+                  back to the widget is correct here.
+                -->
                 <section class="pane pane-submitted pane-failed">
                   <div class="failure-icon">!</div>
                   <h2>We couldn't confirm your donation.</h2>
