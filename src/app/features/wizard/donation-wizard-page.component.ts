@@ -146,7 +146,8 @@ export class DonationWizardPageComponent {
     {
       id: 'courier',
       title: 'Courier Pickup',
-      description: 'We send a courier to collect from your door. A small donation covers the cost.',
+      description:
+        'We send a courier to collect from your door. A small donation covers the cost. Available in all five NYC boroughs.',
       tag: 'Most popular',
     },
     {

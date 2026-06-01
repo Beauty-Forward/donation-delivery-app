@@ -46,7 +46,6 @@
             <button class="btn btn-primary btn-block" type="button" (click)="startDonation()">
               Get Started →
             </button>
-            <p class="pane-note">Available in all five NYC boroughs</p>
           </section>
         }
 
@@ -281,7 +280,7 @@
                     type="text"
                     [ngModel]="form.city"
                     (ngModelChange)="updateField('city', $event)"
-                    placeholder="New York"
+                    placeholder="Your City"
                     [class.invalid]="!!errors['city']"
                   />
                   @if (errors['city']) {
