@@ -757,8 +757,8 @@ export class DonationWizardPageComponent {
     } else if (donationType === 'dropoff') {
       payload.dropoff = {
         // The wizard doesn't ask dropoff donors to schedule a slot — they
-        // walk in during business hours. Mirror the createWalkInDonation
-        // pattern: use today's date and a "flexible" window.
+        // walk in during business hours, so use today's date and a
+        // "flexible" window.
         preferredDate: new Date().toISOString().slice(0, 10),
         preferredTimeWindow: 'flexible',
         locationName: this.warehouseConfig.destination.name,
