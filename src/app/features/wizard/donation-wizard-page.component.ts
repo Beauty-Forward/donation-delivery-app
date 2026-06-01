@@ -696,10 +696,7 @@ export class DonationWizardPageComponent {
       this.confirmationView = 'success';
       this.verifiedAmountUsd = result.verifiedAmountUsd ?? null;
       this.failureReason = 'unknown';
-    } else if (
-      result?.status === 'awaiting_payment' ||
-      result?.status === 'verifying_payment'
-    ) {
+    } else if (result?.status === 'awaiting_payment' || result?.status === 'verifying_payment') {
       // Two distinct awaiting_payment cases, told apart by the backend's
       // failureReason. Neither shows a "Try again / pay again" CTA.
       this.confirmationView = 'failed';
@@ -719,8 +716,7 @@ export class DonationWizardPageComponent {
       this.confirmationView = 'failed';
       this.failureReason = 'payment_verification_failed';
     } else {
-      // Anything else (no result, unexpected status). Fall back to the generic
-      // failed view with the Try-again CTA — same behavior as before this change.
+      // Anything else (no result, unexpected status), fall back to the Try-again CTA.
       this.confirmationView = 'failed';
       this.failureReason = 'unknown';
     }
