@@ -218,7 +218,6 @@ export const createDonationRequest = onCall(
     }
 
     if (payload.donationType === 'dropoff' && payload.dropoff) {
-      console.log('yeah hi, this fired');
       await sendEmailOnce(requestRef.id, 'confirmationEmailSentAt', () =>
         resendEmailService.sendDropoffConfirmationEmail({
           donor: payload.donor,
@@ -641,83 +640,6 @@ export const lookupDonationByReference = onCall({ region: 'us-central1' }, async
     pickup: data['pickup'],
     shipping: data['shipping'],
     createdAt: data['createdAt']?.toDate?.()?.toISOString?.() ?? null,
-  };
-});
-
-// Creates a minimal donation_request document for walk-in donations
-// (donations that arrive at the warehouse without coming through this app).
-// Keeps the delivery app as the single source of truth for all donations.
-export const createWalkInDonation = onCall({ region: 'us-central1' }, async (request) => {
-  const donor = request.data?.donor;
-  if (
-    !donor ||
-    typeof donor.fullName !== 'string' ||
-    typeof donor.email !== 'string' ||
-    typeof donor.phone !== 'string'
-  ) {
-    throw new HttpsError('invalid-argument', 'donor { fullName, email, phone } is required');
-  }
-
-  const notes = typeof request.data?.notes === 'string' ? request.data.notes : '';
-  const createdAt = Timestamp.now();
-  const requestRef = db.collection('donation_requests').doc();
-  const dropoffReference = generateDropoffReference();
-
-  const donorDoc: Record<string, string> = {
-    fullName: donor.fullName,
-    email: donor.email,
-    phone: donor.phone,
-  };
-  if (typeof donor.donorAccountId === 'string') {
-    donorDoc['donorAccountId'] = donor.donorAccountId;
-  }
-
-  const baseDoc = {
-    donationType: 'dropoff',
-    donor: donorDoc,
-    contribution: {
-      provider: 'givebutter',
-      status: 'skipped',
-    },
-    dropoff: {
-      preferredDate: createdAt.toDate().toISOString().slice(0, 10),
-      preferredTimeWindow: 'walk-in',
-      dropoffNotes: notes,
-      locationName: 'Beauty Forward Warehouse',
-      locationAddress: WAREHOUSE_ADDRESS,
-      referenceCode: dropoffReference,
-    },
-    status: 'dropoff_requested' satisfies DonationStatus,
-    createdAt,
-    updatedAt: createdAt,
-    metadata: {
-      source: 'ims-walk-in',
-    },
-  };
-
-  await db.runTransaction(async (transaction) => {
-    transaction.set(requestRef, baseDoc);
-    transaction.set(db.collection('dropoff_requests').doc(requestRef.id), {
-      donationRequestId: requestRef.id,
-      ...baseDoc,
-    });
-  });
-
-  await sendEmailOnce(requestRef.id, 'confirmationEmailSentAt', () =>
-    resendEmailService.sendDropoffConfirmationEmail({
-      donor: { fullName: donor.fullName, email: donor.email, phone: donor.phone },
-      requestId: requestRef.id,
-      status: 'dropoff_requested',
-      dropoff: baseDoc.dropoff,
-      dropoffReference,
-      nextSteps: buildNextSteps('dropoff'),
-    }),
-  );
-
-  return {
-    requestId: requestRef.id,
-    dropoffReference,
-    createdAt: createdAt.toDate().toISOString(),
   };
 });
 
