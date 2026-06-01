@@ -211,9 +211,11 @@ export class DonationWizardPageComponent {
   // to pay again: 'payment_verified_dispatch_failed' means Givebutter confirmed
   // payment but the courier booking failed (they definitely paid), and
   // 'awaiting_payment' means Givebutter's API was unreachable so we can't yet
-  // tell (they may have paid). Only 'payment_verification_failed' is a real
-  // "no payment found", where the Try-again CTA is correct.
-  protected failureReason: WizardFailureReason = 'unknown';
+  // tell (they may have paid). 'payment_verification_failed' is a real
+  // "no payment found", where the Try-again CTA is correct. null means no
+  // classified failure — either no failure, or our backend never returned a
+  // usable result (the call threw); it renders the same Try-again pane.
+  protected failureReason: WizardFailureReason | null = null;
   // Amount Givebutter actually confirmed — surfaced on the success pane. Distinct
   // from gbAmountUsd, which is the donor's intended amount captured client-side and
   // can be wrong/missing because the widget event doesn't always propagate.
@@ -695,7 +697,7 @@ export class DonationWizardPageComponent {
     if (result?.status === 'queued_for_dispatch') {
       this.confirmationView = 'success';
       this.verifiedAmountUsd = result.verifiedAmountUsd ?? null;
-      this.failureReason = 'unknown';
+      this.failureReason = null;
     } else if (result?.status === 'awaiting_payment' || result?.status === 'verifying_payment') {
       // Two distinct awaiting_payment cases, told apart by the backend's
       // failureReason. Neither shows a "Try again / pay again" CTA.
@@ -716,9 +718,12 @@ export class DonationWizardPageComponent {
       this.confirmationView = 'failed';
       this.failureReason = 'payment_verification_failed';
     } else {
-      // Anything else (no result, unexpected status), fall back to the Try-again CTA.
+      // No usable result from our backend (the call threw, so we have no status)
+      // or an unexpected status. We can't classify the failure, so leave
+      // failureReason null — the template renders the generic "couldn't confirm"
+      // + Try-again pane, same as 'payment_verification_failed'.
       this.confirmationView = 'failed';
-      this.failureReason = 'unknown';
+      this.failureReason = null;
     }
     this.persist();
     // Zoneless: callbacks resumed after async boundaries don't auto-trigger CD.
@@ -1099,7 +1104,7 @@ export class DonationWizardPageComponent {
     this.submitted = false;
     this.submittedRequestId = null;
     this.confirmationView = 'verifying';
-    this.failureReason = 'unknown';
+    this.failureReason = null;
     this.verifiedAmountUsd = null;
     this.isSubmitting = false;
     this.pickupVerificationStarted = false;
@@ -1169,7 +1174,7 @@ export class DonationWizardPageComponent {
     this.submittedRequestId = null;
     this.submitted = false;
     this.confirmationView = 'verifying';
-    this.failureReason = 'unknown';
+    this.failureReason = null;
     this.isSubmitting = false;
     this.pickupVerificationStarted = false;
     this.cdr.markForCheck();

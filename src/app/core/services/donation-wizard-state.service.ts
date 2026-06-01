@@ -29,11 +29,15 @@ export type ConfirmationView = 'verifying' | 'success' | 'failed';
 //     whether they paid. Acknowledge the request and say we're still confirming.
 //   - 'payment_verification_failed': Givebutter definitively found no payment.
 //     This is a real "we couldn't confirm" — the Try-again CTA is correct here.
+// A null failureReason means there is no classified failure: either no failure at
+// all (success / fresh state), or the submission never returned a usable result
+// from our own backend (the call threw, so we don't even have a status). The null
+// catch-all renders the same generic "couldn't confirm" + Try-again pane as
+// 'payment_verification_failed'.
 export type WizardFailureReason =
   | 'payment_verified_dispatch_failed'
   | 'awaiting_payment'
-  | 'payment_verification_failed'
-  | 'unknown';
+  | 'payment_verification_failed';
 
 export interface DonationWizardState {
   step: number;
@@ -48,7 +52,7 @@ export interface DonationWizardState {
   submitted: boolean;
   submittedRequestId: string | null;
   confirmationView: ConfirmationView;
-  failureReason: WizardFailureReason;
+  failureReason: WizardFailureReason | null;
   verifiedAmountUsd: number | null;
 }
 
@@ -80,7 +84,7 @@ export const DEFAULT_DONATION_WIZARD_STATE: DonationWizardState = {
   submitted: false,
   submittedRequestId: null,
   confirmationView: 'verifying',
-  failureReason: 'unknown',
+  failureReason: null,
   verifiedAmountUsd: null,
 };
 
