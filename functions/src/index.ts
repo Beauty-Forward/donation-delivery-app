@@ -9,12 +9,21 @@
 // transpiled elsewhere.
 import { config as loadDotenv } from 'dotenv';
 import { join } from 'path';
+// .env.local — emulator-only overrides (sandbox creds, dev escape hatches);
+// never deployed. Loaded with override:true so it wins even over the empty
+// ROADIE_API_KEY the Functions emulator injects for the bound-but-unset secret,
+// keeping local dispatch pointed at the Roadie sandbox.
+// .env — deployed config; loaded without override so it never clobbers the
+// real ROADIE_API_KEY that Cloud Functions injects from Secret Manager at
+// runtime (and the file carries the production base URL).
+loadDotenv({ path: join(__dirname, '..', '.env.local'), override: true });
 loadDotenv({ path: join(__dirname, '..', '.env') });
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { defineSecret } from 'firebase-functions/params';
 import {
   CreateContributionSessionPayload,
   CreateDonationRequestPayload,
@@ -47,6 +56,12 @@ const db = getFirestore();
 // one of which is populated per request — without this, the runTransaction
 // below fails with "Cannot use \"undefined\" as a Firestore value".
 db.settings({ ignoreUndefinedProperties: true });
+// Roadie production credential. Bound to every function that dispatches (see the
+// `secrets` option on each below); Firebase injects it as process.env.ROADIE_API_KEY
+// at runtime, which RoadieCourierProvider reads. Locally it comes from .env.local
+// instead, so the emulator runs against the Roadie sandbox.
+const roadieApiKey = defineSecret('ROADIE_API_KEY');
+
 // Lazy-init: pick real-vs-mock on first dispatch call. Cloud Functions Gen2 (and the
 // emulator) populate process.env per-invocation, not at module load, so a top-level
 // check would always see the mock branch when the worker starts cold.
@@ -129,7 +144,7 @@ async function notifyPickupQueued(
 }
 
 export const createDonationRequest = onCall(
-  { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' },
+  { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB', secrets: [roadieApiKey] },
   async (request) => {
     const parsed = createDonationRequestSchema.safeParse(request.data);
 
@@ -366,7 +381,7 @@ export const createContributionSession = onCall({ region: 'us-central1' }, async
 // client-side. Donor explicitly clicks "I've completed my donation" in the wizard;
 // we trust the click and verify against Givebutter on the backend.
 export const verifyContributionAndDispatch = onDocumentCreated(
-  { region: 'us-central1', document: 'donation_requests/{requestId}' },
+  { region: 'us-central1', document: 'donation_requests/{requestId}', secrets: [roadieApiKey] },
   async (event) => {
     const snap = event.data;
     if (!snap) {
@@ -444,7 +459,9 @@ export const verifyContributionAndDispatch = onDocumentCreated(
   },
 );
 
-export const handleGivebutterWebhook = onRequest({ region: 'us-central1' }, async (req, res) => {
+export const handleGivebutterWebhook = onRequest(
+  { region: 'us-central1', secrets: [roadieApiKey] },
+  async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
     return;
