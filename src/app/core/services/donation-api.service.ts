@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { addDoc, collection, doc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, runTransaction } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { environment } from '../../../environments/environment';
 import {
@@ -89,27 +89,39 @@ export class DonationApiService {
       },
     };
 
-    const donationRef = await addDoc(
-      collection(this.firebaseClient.firestore, 'donation_requests'),
-      donationDocument,
-    );
-
+    // Deterministic doc id, shared with the callable via idempotencyKey, so both
+    // collapse onto one doc. Create-if-not-exists: if the callable already wrote
+    // this doc (the common timeout case), back off rather than overwrite — an
+    // overwrite would wipe its status/email-sent flag and trigger a second
+    // confirmation email. See #113 (L1).
+    const requestId = payload.idempotencyKey ?? crypto.randomUUID();
+    const firestore = this.firebaseClient.firestore;
+    const donationRef = doc(firestore, 'donation_requests', requestId);
     const typedCollectionName = `${payload.donationType}_requests`;
-    const typedDocRef = doc(this.firebaseClient.firestore, typedCollectionName, donationRef.id);
-    await setDoc(typedDocRef, {
-      donationRequestId: donationRef.id,
-      ...donationDocument,
+    const typedDocRef = doc(firestore, typedCollectionName, requestId);
+
+    await runTransaction(firestore, async (tx) => {
+      const existing = await tx.get(donationRef);
+      if (existing.exists()) {
+        return; // callable (or a prior retry) already created it — don't clobber
+      }
+      tx.set(donationRef, donationDocument);
+      tx.set(typedDocRef, { donationRequestId: requestId, ...donationDocument });
     });
+
+    // The callable may have advanced the doc past the initial status (e.g. to
+    // queued_for_dispatch). Reflect whatever is actually persisted.
+    const finalStatus = ((await getDoc(donationRef)).data()?.['status'] as DonationStatus) ?? status;
 
     const dropoffReference =
       payload.donationType === 'dropoff'
-        ? `BFD-${nowIso.slice(0, 10).replace(/-/g, '')}-${donationRef.id.slice(0, 6).toUpperCase()}`
+        ? `BFD-${nowIso.slice(0, 10).replace(/-/g, '')}-${requestId.slice(0, 6).toUpperCase()}`
         : undefined;
 
     return {
-      requestId: donationRef.id,
+      requestId,
       donationType: payload.donationType,
-      status,
+      status: finalStatus,
       createdAt: nowIso,
       dropoffReference,
       nextSteps: this.buildNextSteps(payload.donationType),

@@ -13,7 +13,7 @@ interface MockResponseInit {
 function makeResponse({ status = 200, body }: MockResponseInit = {}): Response {
   return new Response(body == null ? null : JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 
@@ -34,7 +34,7 @@ function makeFetchMock(responses: Array<MockResponseInit>) {
 const DONOR: DonorInfo = {
   fullName: 'Jane Rivera',
   email: 'jane@example.com',
-  phone: '5551234567'
+  phone: '5551234567',
 };
 
 const PICKUP: PickupDetails = {
@@ -42,11 +42,11 @@ const PICKUP: PickupDetails = {
     line1: '123 Main St',
     city: 'Brooklyn',
     state: 'NY',
-    postalCode: '11201'
+    postalCode: '11201',
   },
   warehouseAddress: WAREHOUSE_ADDRESS,
   preferredDate: '2026-06-01',
-  preferredTimeWindow: '9 AM – 12 PM'
+  preferredTimeWindow: '9 AM – 12 PM',
 };
 
 const SHIPPING: ShippingDetails = {
@@ -54,9 +54,9 @@ const SHIPPING: ShippingDetails = {
     line1: '500 Oak Rd',
     city: 'Austin',
     state: 'TX',
-    postalCode: '78701'
+    postalCode: '78701',
   },
-  shippingLabelRequested: true
+  shippingLabelRequested: true,
 };
 
 const DROPOFF: DropoffDetails = {
@@ -64,14 +64,19 @@ const DROPOFF: DropoffDetails = {
   preferredTimeWindow: '1 PM – 5 PM',
   locationName: 'Beauty Forward Warehouse',
   locationAddress: WAREHOUSE_ADDRESS,
-  referenceCode: 'BF-ABC123'
+  referenceCode: 'BF-ABC123',
 };
 
 describe('ResendEmailService', () => {
   it('skips fetch and warns when RESEND_API_KEY is empty', async () => {
     const { fn } = makeFetchMock([]);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const service = new ResendEmailService('', 'onboarding@resend.dev', 'https://api.resend.com', fn);
+    const service = new ResendEmailService(
+      '',
+      'onboarding@resend.dev',
+      'https://api.resend.com',
+      fn,
+    );
 
     await service.sendPickupConfirmationEmail({
       donor: DONOR,
@@ -79,13 +84,11 @@ describe('ResendEmailService', () => {
       status: 'queued_for_dispatch',
       pickup: PICKUP,
       courierDispatchId: 'roadie_abc',
-      nextSteps: ['step 1']
+      nextSteps: ['step 1'],
     });
 
     expect(fn).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledWith(
-      'RESEND_API_KEY not set; skipping confirmation email'
-    );
+    expect(warn).toHaveBeenCalledWith('RESEND_API_KEY not set; skipping confirmation email');
     warn.mockRestore();
   });
 
@@ -95,7 +98,7 @@ describe('ResendEmailService', () => {
       'test-key',
       'onboarding@resend.dev',
       'https://api.resend.com',
-      fn
+      fn,
     );
 
     await service.sendPickupConfirmationEmail({
@@ -104,7 +107,7 @@ describe('ResendEmailService', () => {
       status: 'queued_for_dispatch',
       pickup: PICKUP,
       courierDispatchId: 'roadie_xyz',
-      nextSteps: ['Keep your donation accessible.']
+      nextSteps: ['Keep your donation accessible.'],
     });
 
     expect(fn).toHaveBeenCalledTimes(1);
@@ -115,7 +118,7 @@ describe('ResendEmailService', () => {
     expect(reqInit.method).toBe('POST');
     expect(reqInit.headers).toMatchObject({
       Authorization: 'Bearer test-key',
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     });
 
     const body = JSON.parse(reqInit.body as string);
@@ -132,7 +135,7 @@ describe('ResendEmailService', () => {
       'test-key',
       'onboarding@resend.dev',
       'https://api.resend.com',
-      fn
+      fn,
     );
 
     await service.sendShippingConfirmationEmail({
@@ -142,7 +145,7 @@ describe('ResendEmailService', () => {
       shipping: SHIPPING,
       shippingLabelReference: 'quote_123',
       warehouseAddress: WAREHOUSE_ADDRESS,
-      nextSteps: ['Watch your inbox.']
+      nextSteps: ['Watch your inbox.'],
     });
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
@@ -158,12 +161,12 @@ describe('ResendEmailService', () => {
       'test-key',
       'onboarding@resend.dev',
       'https://api.resend.com',
-      fn
+      fn,
     );
 
     await service.sendDonationRecoveryEmail({
       donor: DONOR,
-      requestId: 'req_recovery'
+      requestId: 'req_recovery',
     });
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
@@ -182,7 +185,7 @@ describe('ResendEmailService', () => {
       'test-key',
       'onboarding@resend.dev',
       'https://api.resend.com',
-      fn
+      fn,
     );
 
     await service.sendDropoffConfirmationEmail({
@@ -191,7 +194,7 @@ describe('ResendEmailService', () => {
       status: 'dropoff_requested',
       dropoff: DROPOFF,
       dropoffReference: 'BF-ABC123',
-      nextSteps: ['Bring your donation.']
+      nextSteps: ['Bring your donation.'],
     });
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
@@ -203,9 +206,9 @@ describe('ResendEmailService', () => {
     const { fn, calls } = makeFetchMock([{ status: 200, body: {} }]);
     const service = new ResendEmailService(
       'test-key',
-      'donations@beautyforward.org',
+      'info@beauty-forward.org',
       'https://api.resend.com',
-      fn
+      fn,
     );
 
     await service.sendDropoffConfirmationEmail({
@@ -214,11 +217,11 @@ describe('ResendEmailService', () => {
       status: 'dropoff_requested',
       dropoff: DROPOFF,
       dropoffReference: 'BF-ABC123',
-      nextSteps: []
+      nextSteps: [],
     });
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
-    expect(body.from).toBe('donations@beautyforward.org');
+    expect(body.from).toBe('info@beauty-forward.org');
   });
 
   it('throws when Resend returns a non-OK status', async () => {
@@ -227,7 +230,7 @@ describe('ResendEmailService', () => {
       'test-key',
       'onboarding@resend.dev',
       'https://api.resend.com',
-      fn
+      fn,
     );
 
     await expect(
@@ -236,8 +239,8 @@ describe('ResendEmailService', () => {
         requestId: 'req_err',
         status: 'queued_for_dispatch',
         pickup: PICKUP,
-        nextSteps: []
-      })
+        nextSteps: [],
+      }),
     ).rejects.toThrow(/Resend send failed: 422/);
   });
 });
