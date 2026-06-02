@@ -43,7 +43,6 @@ import {
 import { MockRoadieCourierProvider } from './providers/mock-roadie-provider.js';
 import { RoadieCourierProvider } from './providers/roadie-provider.js';
 import type { CourierDispatchProvider } from './providers/courier-provider.js';
-import { MockShippingLabelProvider } from './providers/mock-shipping-label-provider.js';
 import { GivebutterService } from './services/givebutter.service.js';
 import { HubspotService } from './services/hubspot.service.js';
 import { ResendEmailService } from './services/resend.service.js';
@@ -84,7 +83,6 @@ function getCourierProvider(): CourierDispatchProvider {
   );
   return _courierProvider;
 }
-const shippingLabelProvider = new MockShippingLabelProvider();
 const givebutterService = new GivebutterService();
 const hubspotService = new HubspotService();
 const resendEmailService = new ResendEmailService();
@@ -174,7 +172,6 @@ export const createDonationRequest = onCall(
     let status: DonationStatus = 'submitted';
     let dropoffReference: string | undefined;
     let courierDispatchId: string | undefined;
-    let shippingLabelReference: string | undefined;
     let verifiedAmountUsd: number | undefined;
     let failureReason: string | undefined;
 
@@ -185,15 +182,9 @@ export const createDonationRequest = onCall(
     }
 
     if (payload.donationType === 'shipping' && payload.shipping) {
-      status = 'pending_label_purchase';
-
-      if (payload.shipping.shippingLabelRequested) {
-        const labelIntent = await shippingLabelProvider.createLabelIntent({
-          requestId: requestRef.id,
-          shipping: payload.shipping,
-        });
-        shippingLabelReference = labelIntent.quoteId;
-      }
+      // The donor ships the package to the warehouse themselves; the doc create
+      // is the success moment. A real prepaid-label provider is tracked for v2.
+      status = 'awaiting_shipment';
     }
 
     if (payload.donationType === 'dropoff' && payload.dropoff) {
@@ -220,7 +211,6 @@ export const createDonationRequest = onCall(
         ...payload.metadata,
         source: 'public-web',
         courierDispatchId,
-        shippingLabelReference,
       },
     };
 
@@ -262,9 +252,8 @@ export const createDonationRequest = onCall(
         resendEmailService.sendShippingConfirmationEmail({
           donor: payload.donor,
           requestId: requestRef.id,
-          status: 'pending_label_purchase',
+          status: 'awaiting_shipment',
           shipping: payload.shipping!,
-          shippingLabelReference,
           warehouseAddress: WAREHOUSE_ADDRESS,
           nextSteps: buildNextSteps('shipping'),
         }),
@@ -393,7 +382,6 @@ export const createDonationRequest = onCall(
       createdAt: createdAt.toDate().toISOString(),
       dropoffReference,
       courierDispatchId,
-      shippingLabelReference,
       verifiedAmountUsd,
       failureReason,
       nextSteps: buildNextSteps(payload.donationType),
@@ -732,7 +720,7 @@ function buildNextSteps(type: CreateDonationRequestPayload['donationType']): str
 
   if (type === 'shipping') {
     return [
-      'We will send shipping label instructions to your email address.',
+      'Ship your items to the warehouse address shown above.',
       'After shipping, save your receipt so we can trace delivery if needed.',
     ];
   }

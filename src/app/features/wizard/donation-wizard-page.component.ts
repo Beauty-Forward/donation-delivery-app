@@ -808,7 +808,6 @@ export class DonationWizardPageComponent {
     } else {
       payload.shipping = {
         senderAddress: this.buildDonorAddress(donorCity, donorState),
-        shippingLabelRequested: false,
       };
     }
 

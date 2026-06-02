@@ -16,19 +16,14 @@ export interface ShippingConfirmationEmailData {
   requestId: string;
   status: DonationStatus;
   shipping: ShippingDetails;
-  shippingLabelReference?: string;
   warehouseAddress: { line1: string; line2?: string; city: string; state: string; postalCode: string };
   nextSteps: string[];
 }
 
 export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailData): { subject: string; html: string } {
-  const { donor, requestId, status, shipping, shippingLabelReference, warehouseAddress, nextSteps } = data;
+  const { donor, requestId, status, shipping, warehouseAddress, nextSteps } = data;
 
   let gridRows = gridRowHtml('Request ID', requestId);
-
-  if (shippingLabelReference) {
-    gridRows += gridRowHtml('Shipping Label Reference', shippingLabelReference);
-  }
 
   gridRows += gridRowHtml('Status', status);
 
@@ -45,7 +40,7 @@ export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailDa
     ${statusDotHtml()}
     ${eyebrowHtml('Shipping request submitted')}
     ${headingHtml("You're all set")}
-    ${bodyTextHtml(`Hi ${donor.fullName}, thanks for donating. We\u2019ll send shipping steps to your inbox shortly.`)}
+    ${bodyTextHtml(`Hi ${donor.fullName}, thanks for donating. Please ship your items to the warehouse address below.`)}
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       ${gridRows}
