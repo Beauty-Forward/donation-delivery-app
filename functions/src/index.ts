@@ -100,6 +100,27 @@ const resendEmailService = new ResendEmailService();
 // so we swallow send failures rather than propagate them.
 type EmailIdempotencyFlag = 'confirmationEmailSentAt' | 'recoveryEmailSentAt';
 
+// Recursively drop keys whose value is `null`. The Firebase callable client encodes
+// `undefined` as `null` on the wire, which turns blank optional fields into explicit
+// nulls that Zod `.optional()` rejects. Stripping them makes absent optionals read as
+// absent. Arrays are preserved (and their object elements cleaned); non-objects pass
+// through unchanged.
+function stripNullValues<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripNullValues(item)) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      if (val !== null) {
+        cleaned[key] = stripNullValues(val);
+      }
+    }
+    return cleaned as T;
+  }
+  return value;
+}
+
 async function sendEmailOnce(
   requestId: string,
   flagName: EmailIdempotencyFlag,
@@ -152,7 +173,13 @@ async function notifyPickupQueued(
 export const createDonationRequest = onCall(
   { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB', secrets: [roadieApiKey] },
   async (request) => {
-    const parsed = createDonationRequestSchema.safeParse(request.data);
+    // The Firebase callable client serializes `undefined` optional fields as `null`
+    // (its encoder treats undefined and null identically). Zod `.optional()` string
+    // fields accept `undefined`/missing but reject `null`, so a blank optional field
+    // (e.g. address line2) would fail validation and force the donor onto the silent
+    // direct-Firestore fallback. Strip nulls so absent optionals read as absent.
+    // Required fields that are genuinely null still fail, as they should.
+    const parsed = createDonationRequestSchema.safeParse(stripNullValues(request.data));
 
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', parsed.error.flatten().formErrors.join(' '));
