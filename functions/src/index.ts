@@ -9,14 +9,20 @@
 // transpiled elsewhere.
 import { config as loadDotenv } from 'dotenv';
 import { join } from 'path';
-// .env.local — emulator-only overrides (sandbox creds, dev escape hatches);
-// never deployed. Loaded with override:true so it wins even over the empty
-// ROADIE_API_KEY the Functions emulator injects for the bound-but-unset secret,
-// keeping local dispatch pointed at the Roadie sandbox.
-// .env — deployed config; loaded without override so it never clobbers the
-// real ROADIE_API_KEY that Cloud Functions injects from Secret Manager at
-// runtime (and the file carries the production base URL).
-loadDotenv({ path: join(__dirname, '..', '.env.local'), override: true });
+// .env.local — emulator-only overrides (sandbox creds, dev escape hatches).
+// CRITICAL: only load it under the emulator. Firebase still SHIPS this file in
+// the deploy bundle (it merely skips it for its own env injection), so loading
+// it in prod with override:true would clobber the real ROADIE_API_KEY injected
+// from Secret Manager and the production base URL — silently putting prod into
+// sandbox mode with verification disabled. The FUNCTIONS_EMULATOR guard keeps
+// it strictly local; firebase.json `functions.ignore` also excludes it from the
+// upload as defense in depth.
+if (process.env['FUNCTIONS_EMULATOR'] === 'true') {
+  loadDotenv({ path: join(__dirname, '..', '.env.local'), override: true });
+}
+// .env — deployed config; loaded without override so it never clobbers the real
+// ROADIE_API_KEY that Cloud Functions injects from Secret Manager at runtime
+// (and the file carries the production base URL).
 loadDotenv({ path: join(__dirname, '..', '.env') });
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
