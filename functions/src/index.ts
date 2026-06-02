@@ -31,6 +31,7 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { isCallableOwnedDoc } from './dispatch-routing.js';
+import { isAlreadyExistsError } from './firestore-utils.js';
 import {
   CreateContributionSessionPayload,
   CreateDonationRequestPayload,
@@ -161,7 +162,14 @@ export const createDonationRequest = onCall(
 
     const payload = parsed.data as CreateDonationRequestPayload;
     const createdAt = Timestamp.now();
-    const requestRef = db.collection('donation_requests').doc();
+    // Deterministic doc id: the client sends the same idempotencyKey to this
+    // callable AND reuses it in the direct-Firestore fallback, so both collapse
+    // onto ONE doc instead of creating two (which would mean two emails). The
+    // create-only transaction below makes whoever's second back off. Legacy
+    // clients without a key fall back to an auto id (old behavior). See #113 (L1).
+    const requestRef = payload.idempotencyKey
+      ? db.collection('donation_requests').doc(payload.idempotencyKey)
+      : db.collection('donation_requests').doc();
 
     let status: DonationStatus = 'submitted';
     let dropoffReference: string | undefined;
@@ -218,13 +226,33 @@ export const createDonationRequest = onCall(
 
     const typedCollectionName = `${payload.donationType}_requests`;
 
-    await db.runTransaction(async (transaction) => {
-      transaction.set(requestRef, baseDoc);
-      transaction.set(db.collection(typedCollectionName).doc(requestRef.id), {
-        donationRequestId: requestRef.id,
-        ...baseDoc,
+    try {
+      await db.runTransaction(async (transaction) => {
+        transaction.create(requestRef, baseDoc);
+        transaction.create(db.collection(typedCollectionName).doc(requestRef.id), {
+          donationRequestId: requestRef.id,
+          ...baseDoc,
+        });
       });
-    });
+    } catch (err) {
+      if (!isAlreadyExistsError(err)) {
+        throw err;
+      }
+      // Same idempotencyKey already created this donation — the direct-Firestore
+      // fallback (or a retry of this callable). Don't duplicate the doc or
+      // re-dispatch; whoever created it owns dispatch (its inline path or its
+      // onCreate trigger). Return the doc's current state. See #113 (L1).
+      const existing = (await requestRef.get()).data() ?? {};
+      const existingMeta = (existing['metadata'] ?? {}) as Record<string, unknown>;
+      return {
+        requestId: requestRef.id,
+        donationType: payload.donationType,
+        status: (existing['status'] as DonationStatus) ?? status,
+        createdAt: createdAt.toDate().toISOString(),
+        courierDispatchId: existingMeta['courierDispatchId'] as string | undefined,
+        nextSteps: buildNextSteps(payload.donationType),
+      } satisfies DonationSubmissionResult;
+    }
 
     // Shipping + dropoff have no async verification step — the doc create *is* the
     // success moment, so email the donor here. Pickup waits until verification +
