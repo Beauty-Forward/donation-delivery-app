@@ -815,11 +815,11 @@ export class DonationWizardPageComponent {
   }
 
   private buildDonorAddress(city: string, state: string): AddressInfo {
-    // Omit line2 when blank: the callable client encodes undefined as null, which the
-    // backend's optional() schema rejects (and the Firestore fallback rejects undefined).
+    // Empty string (not undefined) for a blank line2: the callable client encodes
+    // undefined as null, which the backend's optional() schema rejects.
     return {
       line1: this.form.addressLine1 || 'Not provided',
-      ...(this.form.addressLine2 ? { line2: this.form.addressLine2 } : {}),
+      line2: this.form.addressLine2 || '',
       city: city || 'Not provided',
       state: state || 'Not provided',
       postalCode: this.form.zip || '00000',
