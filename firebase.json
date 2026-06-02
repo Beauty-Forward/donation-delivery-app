@@ -1,7 +1,17 @@
 {
   "functions": {
     "source": "functions",
-    "codebase": "donor"
+    "codebase": "donor",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "*.local",
+      ".env.local",
+      ".env.*.local",
+      ".secret.local"
+    ]
   },
   "firestore": {
     "rules": "firestore.rules",
