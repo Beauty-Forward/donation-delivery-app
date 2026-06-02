@@ -30,6 +30,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
+import { isCallableOwnedDoc } from './dispatch-routing.js';
 import {
   CreateContributionSessionPayload,
   CreateDonationRequestPayload,
@@ -397,6 +398,16 @@ export const verifyContributionAndDispatch = onDocumentCreated(
     const requestId = event.params['requestId'];
 
     if (data['donationType'] !== 'pickup') {
+      return;
+    }
+
+    // The createDonationRequest callable creates this doc AND verifies + dispatches
+    // it synchronously. This trigger is only a backstop for the frontend's direct-
+    // Firestore fallback. Acting on a callable-created doc races the callable's
+    // inline dispatch — the status guard below isn't enough because the callable
+    // writes its terminal status only AFTER dispatching — and books a second
+    // courier plus a second email. Bail on callable-owned docs. See #112.
+    if (isCallableOwnedDoc(data['metadata'])) {
       return;
     }
 
