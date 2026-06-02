@@ -40,8 +40,20 @@ const pickupSchema = z.object({
   warehouseAddress: addressSchema,
 });
 
+// Shipping donors mail their package to us; we never dispatch a courier to them, so
+// the only sender fields we use are city/state (donor matching). Street + ZIP are
+// optional because the wizard's ship flow collects only city + state.
+const senderAddressSchema = z.object({
+  line1: z.string().min(3).optional(),
+  line2: z.string().optional(),
+  city: z.string().min(2),
+  state: z.string().min(2).max(2),
+  postalCode: z.string().min(5).optional(),
+  instructions: z.string().optional(),
+});
+
 const shippingSchema = z.object({
-  senderAddress: addressSchema,
+  senderAddress: senderAddressSchema,
   packageNotes: z.string().optional(),
 });
 
