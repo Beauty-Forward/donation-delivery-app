@@ -45,7 +45,7 @@ export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailDa
 
   const body = `
     ${statusDotHtml()}
-    ${eyebrowHtml('Donation shipment submitted')}
+    ${eyebrowHtml('Ship your items')}
     ${headingHtml("You're all set")}
     ${bodyTextHtml(`Hi ${donor.fullName}, thanks for donating! Please ship your items to the warehouse address below. Once you've shipped your items, email us at info@beauty-forward.org with your shipping confirmation number so that we can track delivery.`)}
 
@@ -63,7 +63,7 @@ export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailDa
   `;
 
   return {
-    subject: 'Your Beauty Forward donation shipment is confirmed',
+    subject: 'Your Beauty Forward donation is confirmed',
     html: wrapInBaseLayout(body),
   };
 }
