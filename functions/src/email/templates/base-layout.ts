@@ -56,7 +56,7 @@ export function wrapInBaseLayout(bodyHtml: string): string {
                 <tr>
                   <td style="font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:13px; color:#6b6560; line-height:1.6; text-align:center;">
                     Questions? Reply to this email or reach us at
-                    <a href="mailto:donations@beautyforward.org" style="color:#295018; text-decoration:none;">donations@beautyforward.org</a>
+                    <a href="mailto:info@beauty-forward.org" style="color:#295018; text-decoration:none;">info@beauty-forward.org</a>
                   </td>
                 </tr>
                 <tr>
