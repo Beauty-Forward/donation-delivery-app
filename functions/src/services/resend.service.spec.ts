@@ -206,7 +206,7 @@ describe('ResendEmailService', () => {
     const { fn, calls } = makeFetchMock([{ status: 200, body: {} }]);
     const service = new ResendEmailService(
       'test-key',
-      'info@beauty-forward.org',
+      'confirmation@updates.beauty-forward.org',
       'https://api.resend.com',
       fn,
     );
