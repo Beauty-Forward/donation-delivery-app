@@ -321,6 +321,9 @@ export const createDonationRequest = onCall(
           ...(verification.verificationTransactionId
             ? { verificationTransactionId: verification.verificationTransactionId }
             : {}),
+          ...(verification.verificationMatchType
+            ? { verificationMatchType: verification.verificationMatchType }
+            : {}),
           ...(verification.failureReason
             ? { verificationFailureReason: verification.failureReason }
             : {}),
@@ -486,6 +489,9 @@ export const verifyContributionAndDispatch = onDocumentCreated(
           : {}),
         ...(verification.verificationTransactionId
           ? { verificationTransactionId: verification.verificationTransactionId }
+          : {}),
+        ...(verification.verificationMatchType
+          ? { verificationMatchType: verification.verificationMatchType }
           : {}),
         ...(verification.failureReason
           ? { verificationFailureReason: verification.failureReason }

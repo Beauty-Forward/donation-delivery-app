@@ -1,5 +1,11 @@
 import { ContributionSessionResponse, CreateContributionSessionPayload } from '../models.js';
 
+// How a transaction was matched back to the donor. `email` is the strong signal
+// (donor's wizard email == transaction email). `name_fallback` means the email
+// didn't match anything in the window but the donor's full name did — see #63.
+// Persisted on the verification doc so ops can audit fallback matches.
+export type VerificationMatchType = 'email' | 'name_fallback';
+
 // Discriminated union returned by findRecentTransactionForDonor. The verification
 // path branches on `kind` to decide whether to dispatch the courier, mark the
 // request as failed (and email the donor), or fall back to the webhook recovery path.
@@ -10,7 +16,7 @@ import { ContributionSessionResponse, CreateContributionSessionPayload } from '.
 // `incomplete` and `amount_below_minimum` were defensive branches; both were dead.
 // If Givebutter's behavior diverges in the future, expand this union explicitly.
 export type GivebutterVerification =
-  | { kind: 'verified'; amountUsd: number; transactionId: string }
+  | { kind: 'verified'; amountUsd: number; transactionId: string; matchType: VerificationMatchType }
   | { kind: 'rejected'; reason: 'not_found' }
   | { kind: 'error'; reason: string };
 
@@ -66,8 +72,18 @@ export class GivebutterService {
   // amount as of this writing (community feedback request open since Dec 2023). We
   // pull pages of transactions sorted by recency and filter in-process. This is
   // acceptable for Beauty Forward's volume; revisit if the dataset grows large.
+  //
+  // Matching priority (see #63): an email match always wins and short-circuits the
+  // scan. If no email matches anywhere in the window, we fall back to matching the
+  // donor's full name against the transaction's first/last name — this rescues donors
+  // who paid under a different/typo'd email than they typed in the wizard. The name
+  // fallback is intentionally conservative: matches are exact (case-insensitive,
+  // whitespace-normalized, no fuzzy/Levenshtein in v1) and a genuinely ambiguous
+  // window (name matches across two or more *distinct* emails) is rejected rather than
+  // risk dispatching for the wrong donation.
   async findRecentTransactionForDonor(
     donorEmail: string,
+    donorFullName: string,
     minimumUsd: number,
     lookbackMinutes: number,
   ): Promise<GivebutterVerification> {
@@ -80,9 +96,17 @@ export class GivebutterService {
       return { kind: 'rejected', reason: 'not_found' };
     }
 
+    const normalizedName = normalizeName(donorFullName);
+
     const cutoffMs = Date.now() - lookbackMinutes * 60_000;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.verificationTimeoutMs);
+
+    // Name-fallback candidates collected while scanning. Only consulted if no
+    // transaction matched by email. Keyed by transaction email so we can tell a
+    // single donor (one email, possibly two donations) apart from genuinely
+    // ambiguous matches (the same name across two different emails).
+    const nameCandidates = new Map<string, { amountUsd: number; transactionId: string }>();
 
     try {
       const maxPages = 5;
@@ -108,6 +132,8 @@ export class GivebutterService {
             id?: string;
             email?: string;
             contact_email?: string;
+            first_name?: string;
+            last_name?: string;
             amount?: number;
             amount_paid?: number;
             total?: number;
@@ -132,14 +158,9 @@ export class GivebutterService {
             break;
           }
 
-          const txnEmail = (txn.email ?? txn.contact_email ?? '').trim().toLowerCase();
-          if (txnEmail !== normalizedEmail) {
-            continue;
-          }
-
           const status = typeof txn.status === 'string' ? txn.status.toLowerCase() : '';
           if (status && status !== 'succeeded' && status !== 'completed' && status !== 'paid') {
-            // Email match but payment status isn't terminal-success — skip.
+            // Payment status isn't terminal-success — skip for both match paths.
             continue;
           }
 
@@ -152,21 +173,36 @@ export class GivebutterService {
                   ? txn.total
                   : undefined;
 
-          if (amountPaid === undefined) {
+          if (amountPaid === undefined || amountPaid < minimumUsd) {
+            // Below our minimum (or unparseable). Givebutter's widget enforces the
+            // minimum on its side, so this shouldn't happen for app-originated
+            // donations; ignore for both email and name matching.
             continue;
           }
 
-          if (amountPaid >= minimumUsd) {
+          const txnEmail = (txn.email ?? txn.contact_email ?? '').trim().toLowerCase();
+          if (txnEmail === normalizedEmail) {
+            // Strong signal — short-circuit immediately.
             return {
               kind: 'verified',
               amountUsd: amountPaid,
               transactionId: typeof txn.id === 'string' ? txn.id : '',
+              matchType: 'email',
             };
           }
 
-          // Email match but under our minimum — Givebutter's widget enforces the
-          // minimum on its side, so this shouldn't happen for app-originated donations.
-          // Treat as not_found (donor never made a valid pickup donation).
+          // No email match. Stash as a name-fallback candidate if the name lines up.
+          if (
+            normalizedName &&
+            normalizeName(`${txn.first_name ?? ''} ${txn.last_name ?? ''}`) === normalizedName &&
+            !nameCandidates.has(txnEmail)
+          ) {
+            // First (most recent) transaction per distinct email wins.
+            nameCandidates.set(txnEmail, {
+              amountUsd: amountPaid,
+              transactionId: typeof txn.id === 'string' ? txn.id : '',
+            });
+          }
         }
 
         if (crossedCutoff) {
@@ -176,6 +212,25 @@ export class GivebutterService {
         if (typeof lastPage === 'number' && page >= lastPage) {
           break;
         }
+      }
+
+      // No email match anywhere in the window — try the name fallback.
+      if (nameCandidates.size === 1) {
+        const [candidate] = [...nameCandidates.values()];
+        return {
+          kind: 'verified',
+          amountUsd: candidate.amountUsd,
+          transactionId: candidate.transactionId,
+          matchType: 'name_fallback',
+        };
+      }
+      if (nameCandidates.size > 1) {
+        // Same name across two or more distinct emails — too ambiguous to safely
+        // auto-dispatch. Reject; the donor falls into the recovery path.
+        console.warn('Givebutter name fallback ambiguous; rejecting', {
+          normalizedName,
+          distinctEmails: nameCandidates.size,
+        });
       }
 
       return { kind: 'rejected', reason: 'not_found' };
@@ -189,6 +244,13 @@ export class GivebutterService {
       clearTimeout(timer);
     }
   }
+}
+
+// Normalize a name for exact (non-fuzzy) comparison: trim, lowercase, and collapse
+// internal whitespace so "Jane  Donor" and "jane donor" compare equal. Returns ''
+// for empty/whitespace-only input, which callers treat as "no name to match on".
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function parseTransactionTimestamp(
