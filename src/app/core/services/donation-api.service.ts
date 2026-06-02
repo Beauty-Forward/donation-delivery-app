@@ -136,7 +136,7 @@ export class DonationApiService {
         // in verifying_payment and the Givebutter webhook is the only recovery path.
         return 'verifying_payment';
       case 'shipping':
-        return 'pending_label_purchase';
+        return 'awaiting_shipment';
       case 'dropoff':
         return 'dropoff_requested';
       default:
@@ -154,7 +154,7 @@ export class DonationApiService {
 
     if (type === 'shipping') {
       return [
-        'We will send shipping label instructions to your email address.',
+        'Ship your items to the warehouse address in your confirmation email.',
         'After shipping, save your receipt so we can trace delivery if needed.',
       ];
     }

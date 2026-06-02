@@ -56,7 +56,6 @@ const SHIPPING: ShippingDetails = {
     state: 'TX',
     postalCode: '78701',
   },
-  shippingLabelRequested: true,
 };
 
 const DROPOFF: DropoffDetails = {
@@ -141,9 +140,8 @@ describe('ResendEmailService', () => {
     await service.sendShippingConfirmationEmail({
       donor: DONOR,
       requestId: 'req_shipping',
-      status: 'pending_label_purchase',
+      status: 'awaiting_shipment',
       shipping: SHIPPING,
-      shippingLabelReference: 'quote_123',
       warehouseAddress: WAREHOUSE_ADDRESS,
       nextSteps: ['Watch your inbox.'],
     });
@@ -152,7 +150,6 @@ describe('ResendEmailService', () => {
     expect(body.subject).toMatch(/shipping/i);
     expect(body.html).toContain('14 53rd St');
     expect(body.html).toContain('Brooklyn');
-    expect(body.html).toContain('quote_123');
   });
 
   it('posts a donation recovery email referencing the donor email and a CTA', async () => {

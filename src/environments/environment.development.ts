@@ -25,10 +25,6 @@ export const environment = {
     givebutter: {
       publicCampaignUrl: 'https://givebutter.com/beauty-forward',
     },
-    shippingLabel: {
-      provider: 'mock',
-      mockCheckoutUrl: 'https://shippo.com',
-    },
   },
   email: 'info@beauty-forward.org',
   // Lowered from $15 in dev so the pickup-donation gate is testable without paying full price.

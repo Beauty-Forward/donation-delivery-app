@@ -2,8 +2,7 @@ import { Injectable, signal } from '@angular/core';
 import {
   DonationSubmissionResult,
   DropoffFlowDraft,
-  PickupFlowDraft,
-  ShippingFlowDraft
+  PickupFlowDraft
 } from '../models/donation.models';
 
 @Injectable({
@@ -11,18 +10,12 @@ import {
 })
 export class DonationFlowStateService {
   private readonly pickupDraftState = signal<PickupFlowDraft | null>(this.read<PickupFlowDraft>('pickupDraft'));
-  private readonly shippingDraftState = signal<ShippingFlowDraft | null>(
-    this.read<ShippingFlowDraft>('shippingDraft')
-  );
   private readonly dropoffDraftState = signal<DropoffFlowDraft | null>(
     this.read<DropoffFlowDraft>('dropoffDraft')
   );
 
   private readonly pickupConfirmationState = signal<DonationSubmissionResult | null>(
     this.read<DonationSubmissionResult>('pickupConfirmation')
-  );
-  private readonly shippingConfirmationState = signal<DonationSubmissionResult | null>(
-    this.read<DonationSubmissionResult>('shippingConfirmation')
   );
   private readonly dropoffConfirmationState = signal<DonationSubmissionResult | null>(
     this.read<DonationSubmissionResult>('dropoffConfirmation')
@@ -40,20 +33,6 @@ export class DonationFlowStateService {
   clearPickupDraft(): void {
     this.pickupDraftState.set(null);
     this.remove('pickupDraft');
-  }
-
-  getShippingDraft(): ShippingFlowDraft | null {
-    return this.shippingDraftState();
-  }
-
-  setShippingDraft(draft: ShippingFlowDraft): void {
-    this.shippingDraftState.set(draft);
-    this.write('shippingDraft', draft);
-  }
-
-  clearShippingDraft(): void {
-    this.shippingDraftState.set(null);
-    this.remove('shippingDraft');
   }
 
   getDropoffDraft(): DropoffFlowDraft | null {
@@ -77,15 +56,6 @@ export class DonationFlowStateService {
   setPickupConfirmation(result: DonationSubmissionResult): void {
     this.pickupConfirmationState.set(result);
     this.write('pickupConfirmation', result);
-  }
-
-  getShippingConfirmation(): DonationSubmissionResult | null {
-    return this.shippingConfirmationState();
-  }
-
-  setShippingConfirmation(result: DonationSubmissionResult): void {
-    this.shippingConfirmationState.set(result);
-    this.write('shippingConfirmation', result);
   }
 
   getDropoffConfirmation(): DonationSubmissionResult | null {

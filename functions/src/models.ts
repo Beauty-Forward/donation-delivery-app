@@ -7,7 +7,7 @@ export type DonationStatus =
   | 'payment_verification_failed'
   | 'queued_for_dispatch'
   | 'dispatch_requested'
-  | 'pending_label_purchase'
+  | 'awaiting_shipment'
   | 'dropoff_requested'
   | 'completed';
 
@@ -47,10 +47,7 @@ export interface PickupDetails {
 
 export interface ShippingDetails {
   senderAddress: AddressInfo;
-  shippingLabelRequested: boolean;
   packageNotes?: string;
-  shippingLabelIntentAmountUsd?: number;
-  shippingLabelQuoteId?: string;
 }
 
 export interface DropoffDetails {
@@ -84,7 +81,6 @@ export interface DonationSubmissionResult {
   nextSteps: string[];
   dropoffReference?: string;
   courierDispatchId?: string;
-  shippingLabelReference?: string;
   verifiedAmountUsd?: number;
   failureReason?: string;
 }
@@ -107,10 +103,4 @@ export interface CourierDispatchResult {
   dispatchId: string;
   status: 'queued' | 'assigned';
   etaWindow: string;
-}
-
-export interface ShippingLabelResult {
-  provider: 'mock-shipping-provider';
-  quoteId: string;
-  status: 'pending_checkout' | 'ready';
 }

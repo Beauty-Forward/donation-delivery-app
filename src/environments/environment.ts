@@ -28,10 +28,6 @@ export const environment = {
     givebutter: {
       publicCampaignUrl: 'https://givebutter.com/beauty-forward',
     },
-    shippingLabel: {
-      provider: 'mock',
-      mockCheckoutUrl: 'https://shippo.com',
-    },
   },
   email: 'info@beauty-forward.org',
   pickupDonationMinimumUsd: 15,

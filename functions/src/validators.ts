@@ -42,10 +42,7 @@ const pickupSchema = z.object({
 
 const shippingSchema = z.object({
   senderAddress: addressSchema,
-  shippingLabelRequested: z.boolean(),
   packageNotes: z.string().optional(),
-  shippingLabelIntentAmountUsd: z.number().positive().optional(),
-  shippingLabelQuoteId: z.string().optional(),
 });
 
 const dropoffSchema = z.object({

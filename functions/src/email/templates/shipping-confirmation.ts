@@ -16,25 +16,27 @@ export interface ShippingConfirmationEmailData {
   requestId: string;
   status: DonationStatus;
   shipping: ShippingDetails;
-  shippingLabelReference?: string;
-  warehouseAddress: { line1: string; line2?: string; city: string; state: string; postalCode: string };
+  warehouseAddress: {
+    line1: string;
+    line2?: string;
+    city: string;
+    state: string;
+    postalCode: string;
+  };
   nextSteps: string[];
 }
 
-export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailData): { subject: string; html: string } {
-  const { donor, requestId, status, shipping, shippingLabelReference, warehouseAddress, nextSteps } = data;
+export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailData): {
+  subject: string;
+  html: string;
+} {
+  const { donor, requestId, status, shipping, warehouseAddress, nextSteps } = data;
 
   let gridRows = gridRowHtml('Request ID', requestId);
 
-  if (shippingLabelReference) {
-    gridRows += gridRowHtml('Shipping Label Reference', shippingLabelReference);
-  }
-
   gridRows += gridRowHtml('Status', status);
 
-  const addressRows = [
-    gridRowHtml('Ship To', formatAddress(warehouseAddress)),
-  ].join('');
+  const addressRows = [gridRowHtml('Ship To', formatAddress(warehouseAddress))].join('');
 
   const notesSection = shipping.packageNotes
     ? `${sectionHeadingHtml('Package Notes')}
@@ -45,7 +47,7 @@ export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailDa
     ${statusDotHtml()}
     ${eyebrowHtml('Shipping request submitted')}
     ${headingHtml("You're all set")}
-    ${bodyTextHtml(`Hi ${donor.fullName}, thanks for donating. We\u2019ll send shipping steps to your inbox shortly.`)}
+    ${bodyTextHtml(`Hi ${donor.fullName}, thanks for donating! Please ship your items to the warehouse address below. Once you've shipped your items, email us at info@beauty-forward.org with your shipping confirmation number so that we can track delivery.`)}
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       ${gridRows}

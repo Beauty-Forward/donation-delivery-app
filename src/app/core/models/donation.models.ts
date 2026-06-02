@@ -7,7 +7,7 @@ export type DonationStatus =
   | 'payment_verification_failed'
   | 'queued_for_dispatch'
   | 'dispatch_requested'
-  | 'pending_label_purchase'
+  | 'awaiting_shipment'
   | 'dropoff_requested'
   | 'completed';
 
@@ -56,10 +56,7 @@ export interface PickupDetails {
 
 export interface ShippingDetails {
   senderAddress: AddressInfo;
-  shippingLabelRequested: boolean;
   packageNotes?: string;
-  shippingLabelIntentAmountUsd?: number;
-  shippingLabelQuoteId?: string;
 }
 
 export interface DropoffDetails {
@@ -80,17 +77,6 @@ export interface PickupFlowDraft {
   contributionAmountUsd?: number;
   contributionCheckoutStarted?: boolean;
   contributionCheckoutUrl?: string;
-}
-
-export interface ShippingFlowDraft {
-  donor: DonorInfo;
-  senderAddress: AddressInfo;
-  shippingLabelRequested: boolean;
-  packageNotes?: string;
-  contributionAmountUsd?: number;
-  shippingLabelCheckoutPrepared?: boolean;
-  shippingLabelQuoteId?: string;
-  shippingLabelCheckoutUrl?: string;
 }
 
 export interface DropoffFlowDraft {
@@ -125,7 +111,6 @@ export interface DonationSubmissionResult {
   nextSteps: string[];
   dropoffReference?: string;
   courierDispatchId?: string;
-  shippingLabelReference?: string;
   verifiedAmountUsd?: number;
   failureReason?: string;
 }
@@ -148,11 +133,4 @@ export interface ContributionSessionResponse {
   provider: 'givebutter';
   sessionId: string;
   checkoutUrl: string;
-}
-
-export interface ShippingLabelIntentResult {
-  provider: 'mock' | 'future_shipping_provider';
-  quoteId: string;
-  status: 'pending_checkout' | 'ready';
-  checkoutUrl?: string;
 }

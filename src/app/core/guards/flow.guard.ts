@@ -14,18 +14,6 @@ export const pickupConfirmationGuard: CanActivateFn = () => {
   return state.getPickupConfirmation() ? true : router.createUrlTree(['/pickup']);
 };
 
-export const shippingDraftGuard: CanActivateFn = () => {
-  const state = inject(DonationFlowStateService);
-  const router = inject(Router);
-  return state.getShippingDraft() ? true : router.createUrlTree(['/shipping']);
-};
-
-export const shippingConfirmationGuard: CanActivateFn = () => {
-  const state = inject(DonationFlowStateService);
-  const router = inject(Router);
-  return state.getShippingConfirmation() ? true : router.createUrlTree(['/shipping']);
-};
-
 export const dropoffDraftGuard: CanActivateFn = () => {
   const state = inject(DonationFlowStateService);
   const router = inject(Router);
