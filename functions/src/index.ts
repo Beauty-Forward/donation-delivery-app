@@ -421,17 +421,50 @@ export const verifyContributionAndDispatch = onDocumentCreated(
     const data = snap.data();
     const requestId = event.params['requestId'];
 
-    if (data['donationType'] !== 'pickup') {
+    // The createDonationRequest callable creates this doc AND, for pickup, verifies +
+    // dispatches it synchronously — and it sends every confirmation email inline. This
+    // trigger is only a backstop for the frontend's direct-Firestore fallback, which
+    // skips the callable entirely. Acting on a callable-created doc races the callable's
+    // inline work — the status guard below isn't enough because the callable writes its
+    // terminal status only AFTER dispatching — and books a second courier plus a second
+    // email. Bail on callable-owned docs. See #112.
+    if (isCallableOwnedDoc(data['metadata'])) {
       return;
     }
 
-    // The createDonationRequest callable creates this doc AND verifies + dispatches
-    // it synchronously. This trigger is only a backstop for the frontend's direct-
-    // Firestore fallback. Acting on a callable-created doc races the callable's
-    // inline dispatch — the status guard below isn't enough because the callable
-    // writes its terminal status only AFTER dispatching — and books a second
-    // courier plus a second email. Bail on callable-owned docs. See #112.
-    if (isCallableOwnedDoc(data['metadata'])) {
+    // Shipping + dropoff have no async verification or courier dispatch — the callable's
+    // only success-path action for them is the confirmation email (see createDonationRequest).
+    // On the fallback path the callable never ran, so nothing sent it; do it here. The
+    // 'confirmationEmailSentAt' flag keeps this idempotent across function retries.
+    if (data['donationType'] === 'shipping' && data['shipping']) {
+      await sendEmailOnce(requestId, 'confirmationEmailSentAt', () =>
+        resendEmailService.sendShippingConfirmationEmail({
+          donor: data['donor'],
+          requestId,
+          status: 'awaiting_shipment',
+          shipping: data['shipping'],
+          warehouseAddress: WAREHOUSE_ADDRESS,
+          nextSteps: buildNextSteps('shipping'),
+        }),
+      );
+      return;
+    }
+
+    if (data['donationType'] === 'dropoff' && data['dropoff']) {
+      await sendEmailOnce(requestId, 'confirmationEmailSentAt', () =>
+        resendEmailService.sendDropoffConfirmationEmail({
+          donor: data['donor'],
+          requestId,
+          status: 'dropoff_requested',
+          dropoff: data['dropoff'],
+          dropoffReference: data['dropoff']?.referenceCode,
+          nextSteps: buildNextSteps('dropoff'),
+        }),
+      );
+      return;
+    }
+
+    if (data['donationType'] !== 'pickup') {
       return;
     }
 
