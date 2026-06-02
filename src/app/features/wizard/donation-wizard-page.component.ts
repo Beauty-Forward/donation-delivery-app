@@ -815,10 +815,8 @@ export class DonationWizardPageComponent {
   }
 
   private buildDonorAddress(city: string, state: string): AddressInfo {
-    // Omit line2 entirely when blank rather than setting it to undefined: the Firebase
-    // callable client encodes undefined as null on the wire, which the backend's
-    // optional() address schema rejects, and the direct-Firestore fallback rejects
-    // undefined outright. Conditional spread keeps the field absent when unused.
+    // Omit line2 when blank: the callable client encodes undefined as null, which the
+    // backend's optional() schema rejects (and the Firestore fallback rejects undefined).
     return {
       line1: this.form.addressLine1 || 'Not provided',
       ...(this.form.addressLine2 ? { line2: this.form.addressLine2 } : {}),

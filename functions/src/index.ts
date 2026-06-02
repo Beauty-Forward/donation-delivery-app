@@ -100,27 +100,6 @@ const resendEmailService = new ResendEmailService();
 // so we swallow send failures rather than propagate them.
 type EmailIdempotencyFlag = 'confirmationEmailSentAt' | 'recoveryEmailSentAt';
 
-// Recursively drop keys whose value is `null`. The Firebase callable client encodes
-// `undefined` as `null` on the wire, which turns blank optional fields into explicit
-// nulls that Zod `.optional()` rejects. Stripping them makes absent optionals read as
-// absent. Arrays are preserved (and their object elements cleaned); non-objects pass
-// through unchanged.
-function stripNullValues<T>(value: T): T {
-  if (Array.isArray(value)) {
-    return value.map((item) => stripNullValues(item)) as unknown as T;
-  }
-  if (value !== null && typeof value === 'object') {
-    const cleaned: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-      if (val !== null) {
-        cleaned[key] = stripNullValues(val);
-      }
-    }
-    return cleaned as T;
-  }
-  return value;
-}
-
 async function sendEmailOnce(
   requestId: string,
   flagName: EmailIdempotencyFlag,
@@ -173,13 +152,7 @@ async function notifyPickupQueued(
 export const createDonationRequest = onCall(
   { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB', secrets: [roadieApiKey] },
   async (request) => {
-    // The Firebase callable client serializes `undefined` optional fields as `null`
-    // (its encoder treats undefined and null identically). Zod `.optional()` string
-    // fields accept `undefined`/missing but reject `null`, so a blank optional field
-    // (e.g. address line2) would fail validation and force the donor onto the silent
-    // direct-Firestore fallback. Strip nulls so absent optionals read as absent.
-    // Required fields that are genuinely null still fail, as they should.
-    const parsed = createDonationRequestSchema.safeParse(stripNullValues(request.data));
+    const parsed = createDonationRequestSchema.safeParse(request.data);
 
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', parsed.error.flatten().formErrors.join(' '));
@@ -448,21 +421,14 @@ export const verifyContributionAndDispatch = onDocumentCreated(
     const data = snap.data();
     const requestId = event.params['requestId'];
 
-    // The createDonationRequest callable creates this doc AND, for pickup, verifies +
-    // dispatches it synchronously — and it sends every confirmation email inline. This
-    // trigger is only a backstop for the frontend's direct-Firestore fallback, which
-    // skips the callable entirely. Acting on a callable-created doc races the callable's
-    // inline work — the status guard below isn't enough because the callable writes its
-    // terminal status only AFTER dispatching — and books a second courier plus a second
-    // email. Bail on callable-owned docs. See #112.
+    // Backstop only for the direct-Firestore fallback. The callable sends emails (and
+    // dispatches pickup) inline, so skip its docs to avoid a double send/dispatch. See #112.
     if (isCallableOwnedDoc(data['metadata'])) {
       return;
     }
 
-    // Shipping + dropoff have no async verification or courier dispatch — the callable's
-    // only success-path action for them is the confirmation email (see createDonationRequest).
-    // On the fallback path the callable never ran, so nothing sent it; do it here. The
-    // 'confirmationEmailSentAt' flag keeps this idempotent across function retries.
+    // Shipping/dropoff only need the confirmation email; the fallback skipped it.
+    // The 'confirmationEmailSentAt' flag keeps this idempotent.
     if (data['donationType'] === 'shipping' && data['shipping']) {
       await sendEmailOnce(requestId, 'confirmationEmailSentAt', () =>
         resendEmailService.sendShippingConfirmationEmail({
