@@ -806,11 +806,8 @@ export class DonationWizardPageComponent {
         dropoffNotes: this.form.dropoffNotes || undefined,
       };
     } else {
-      // Ship-to-warehouse: the donor mails the box to us, so we only need their
-      // city/state (kept for donor matching) — not a full street address. The ship
-      // flow only collects city + state, so build senderAddress from exactly that
-      // and include any optional fields the donor happened to provide. Omit blanks
-      // rather than storing placeholders like "Not provided" / "00000".
+      // Mail-to-us: only city/state are collected. Include optional fields if
+      // present; omit blanks rather than storing placeholders.
       payload.shipping = {
         senderAddress: {
           city: donorCity,

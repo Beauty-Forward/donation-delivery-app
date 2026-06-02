@@ -45,9 +45,7 @@ export interface PickupDetails {
   warehouseAddress: AddressInfo;
 }
 
-// A shipping donor mails the package to us, so we never route a courier to them.
-// We keep only city/state (used for donor matching); street + ZIP are optional
-// because the wizard collects just city + state for the ship flow.
+// Shipping is mail-to-us: we keep only city/state; street + ZIP are optional.
 export interface SenderAddress {
   line1?: string;
   line2?: string;
