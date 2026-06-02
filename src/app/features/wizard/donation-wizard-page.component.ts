@@ -757,6 +757,10 @@ export class DonationWizardPageComponent {
     // this same object directly to Firestore. So we omit the field entirely when we
     // don't have a value, rather than setting it to undefined.
     const payload: CreateDonationRequestPayload = {
+      // One key per submit attempt. Shared by the callable and the direct-
+      // Firestore fallback so both dispatch attempts collapse to a single Roadie
+      // idempotency_key — no duplicate courier even if the callable times out. #113.
+      idempotencyKey: crypto.randomUUID(),
       donationType,
       donor: {
         fullName,

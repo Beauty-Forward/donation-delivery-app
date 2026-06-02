@@ -227,6 +227,38 @@ describe('RoadieCourierProvider', () => {
 
     await expect(provider.dispatchPickup(farFutureInput)).rejects.toThrow(/missing shipment id/);
   });
+
+  it('treats a 409 (duplicate idempotency_key) as already dispatched, not a failure', async () => {
+    const { fn } = makeFetchMock([{ status: 409, body: { error: 'duplicate idempotency_key' } }]);
+    const provider = new RoadieCourierProvider(
+      'k',
+      'https://s.test/v1',
+      5000,
+      'W',
+      '5550000000',
+      fn,
+    );
+
+    // Must NOT throw — a second dispatch for the same donation is a no-op.
+    const result = await provider.dispatchPickup(farFutureInput);
+    // Empty dispatchId so the caller's `courierDispatchId ? ...` guard preserves
+    // the id recorded by the first (200) dispatch.
+    expect(result).toEqual({ provider: 'roadie', dispatchId: '', status: 'queued', etaWindow: '' });
+  });
+
+  it('sends idempotency_key: the input key when present, else the requestId', async () => {
+    const { fn, calls } = makeFetchMock([
+      { status: 201, body: { id: 'a', status: 'created' } },
+      { status: 201, body: { id: 'b', status: 'created' } },
+    ]);
+    const provider = new RoadieCourierProvider('k', 'https://s.test/v1', 5000, 'W', '5550000000', fn);
+
+    await provider.dispatchPickup({ ...farFutureInput, idempotencyKey: 'idem_xyz' });
+    await provider.dispatchPickup(farFutureInput); // no idempotencyKey
+
+    expect(JSON.parse((calls[0]![1] as RequestInit).body as string).idempotency_key).toBe('idem_xyz');
+    expect(JSON.parse((calls[1]![1] as RequestInit).body as string).idempotency_key).toBe('req_abc123');
+  });
 });
 
 describe('buildTimeWindow', () => {

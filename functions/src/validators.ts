@@ -66,6 +66,7 @@ export const createDonationRequestSchema = z
     shipping: shippingSchema.optional(),
     dropoff: dropoffSchema.optional(),
     metadata: z.record(z.unknown()).optional(),
+    idempotencyKey: z.string().min(8).max(200).optional(),
   })
   .superRefine((payload, context) => {
     if (payload.donationType === 'pickup' && !payload.pickup) {

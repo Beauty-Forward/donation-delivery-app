@@ -27,14 +27,23 @@ export async function verifyAndDispatchPickup(
   requestId: string,
   donor: DonorInfo,
   pickup: PickupDetails,
-  deps: VerifyAndDispatchDeps
+  deps: VerifyAndDispatchDeps,
+  // Shared across the callable and the fallback for one donation; forwarded to
+  // Roadie as idempotency_key so a duplicate dispatch can't book a second
+  // courier. See #113.
+  idempotencyKey?: string
 ): Promise<VerifyAndDispatchResult> {
   // Dev escape hatch — auto-verify so the team can exercise dispatch without
   // paying through the live widget. Never set in prod.
   if (process.env['SKIP_GIVEBUTTER_VERIFICATION'] === 'true') {
     console.warn('[dev] SKIP_GIVEBUTTER_VERIFICATION is on; auto-verifying pickup', { requestId });
     try {
-      const dispatch = await deps.courierProvider.dispatchPickup({ requestId, donor, pickup });
+      const dispatch = await deps.courierProvider.dispatchPickup({
+        requestId,
+        donor,
+        pickup,
+        idempotencyKey,
+      });
       return {
         status: 'queued_for_dispatch',
         courierDispatchId: dispatch.dispatchId,
@@ -61,7 +70,12 @@ export async function verifyAndDispatchPickup(
 
   if (verification.kind === 'verified') {
     try {
-      const dispatch = await deps.courierProvider.dispatchPickup({ requestId, donor, pickup });
+      const dispatch = await deps.courierProvider.dispatchPickup({
+        requestId,
+        donor,
+        pickup,
+        idempotencyKey,
+      });
       return {
         status: 'queued_for_dispatch',
         courierDispatchId: dispatch.dispatchId,
