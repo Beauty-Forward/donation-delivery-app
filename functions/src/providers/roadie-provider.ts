@@ -245,7 +245,9 @@ function pad2(n: number): string {
 
 function parseTimeWindow(input: string): { startHour: number; endHour: number } {
   const lower = (input ?? '').toLowerCase();
-  const match = lower.match(/(\d{1,2})\s*(am|pm)?\s*[-–to]+\s*(\d{1,2})\s*(am|pm)?/);
+  const match = lower.match(
+    /(\d{1,2})(?::\d{2})?\s*(am|pm)?\s*[-–to]+\s*(\d{1,2})(?::\d{2})?\s*(am|pm)?/,
+  );
   if (match) {
     const s = to24Hour(Number(match[1]), match[2] ?? match[4]);
     const e = to24Hour(Number(match[3]), match[4] ?? match[2]);
