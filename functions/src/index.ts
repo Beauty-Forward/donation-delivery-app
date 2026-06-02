@@ -204,6 +204,10 @@ export const createDonationRequest = onCall(
       status,
       createdAt,
       updatedAt: createdAt,
+      // Persisted so the verifyContributionAndDispatch trigger (backstop path)
+      // forwards the same key to Roadie. db.settings ignoreUndefinedProperties
+      // strips this when absent. See #113.
+      idempotencyKey: payload.idempotencyKey,
       metadata: {
         ...payload.metadata,
         source: 'public-web',
@@ -265,6 +269,7 @@ export const createDonationRequest = onCall(
           givebutterService,
           courierProvider: getCourierProvider(),
         },
+        payload.idempotencyKey,
       );
 
       status = verification.status;
@@ -427,10 +432,16 @@ export const verifyContributionAndDispatch = onDocumentCreated(
 
     // Backstop path: the frontend's direct-Firestore-write fallback (used when
     // the callable times out) skips the synchronous verification, so we run it here.
-    const verification = await verifyAndDispatchPickup(requestId, data['donor'], data['pickup'], {
-      givebutterService,
-      courierProvider: getCourierProvider(),
-    });
+    const verification = await verifyAndDispatchPickup(
+      requestId,
+      data['donor'],
+      data['pickup'],
+      {
+        givebutterService,
+        courierProvider: getCourierProvider(),
+      },
+      data['idempotencyKey'] as string | undefined,
+    );
 
     const update = {
       status: verification.status,

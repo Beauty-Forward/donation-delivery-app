@@ -70,6 +70,10 @@ export interface CreateDonationRequestPayload {
   shipping?: ShippingDetails;
   dropoff?: DropoffDetails;
   metadata?: Record<string, unknown>;
+  // Client-generated, stable per donation attempt. Shared by the callable and
+  // the direct-Firestore fallback; forwarded to Roadie as idempotency_key to
+  // prevent a duplicate courier booking. See #113.
+  idempotencyKey?: string;
 }
 
 export interface DonationSubmissionResult {

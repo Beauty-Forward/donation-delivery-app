@@ -61,6 +61,17 @@ export class RoadieCourierProvider implements CourierDispatchProvider {
       });
 
       const text = await res.text();
+      // Idempotent duplicate: a prior request with the same idempotency_key
+      // already created this shipment. Treat as success — do NOT book again or
+      // fail the donation. We don't get the original shipment id back here, so
+      // we return an empty dispatchId; the caller's `courierDispatchId ? ...`
+      // guards drop it, preserving the id recorded by the first (200) dispatch.
+      if (res.status === 409) {
+        console.warn('[roadie] duplicate shipment (409); treating as already dispatched', {
+          requestId: input.requestId,
+        });
+        return { provider: 'roadie', dispatchId: '', status: 'queued', etaWindow: '' };
+      }
       if (!res.ok) {
         throw new Error(
           `Roadie create-shipment failed: ${res.status} POST ${url} -> ${text.slice(0, 500)}`,
@@ -104,6 +115,11 @@ export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadO
 
   return {
     reference_id: requestId,
+    // Roadie dedupes on this: a duplicate create with the same key yields 409
+    // after the first 200, so the callable and the fallback can't both book a
+    // courier for the same donation. Falls back to requestId when no shared
+    // client key is present. See #113.
+    idempotency_key: input.idempotencyKey ?? requestId,
     description: 'Beauty Forward donation pickup',
     items: [
       {
