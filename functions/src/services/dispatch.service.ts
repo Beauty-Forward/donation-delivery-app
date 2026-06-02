@@ -1,6 +1,6 @@
 import type { DonorInfo, PickupDetails } from '../models.js';
 import type { CourierDispatchProvider } from '../providers/courier-provider.js';
-import { GivebutterService } from './givebutter.service.js';
+import { GivebutterService, type VerificationMatchType } from './givebutter.service.js';
 import { getPickupDonationMinUsd } from '../validators.js';
 
 export interface VerifyAndDispatchResult {
@@ -8,6 +8,9 @@ export interface VerifyAndDispatchResult {
   courierDispatchId?: string;
   verifiedAmountUsd?: number;
   verificationTransactionId?: string;
+  // How the donation was matched to the donor (email vs name fallback). Only set
+  // when a transaction was found; persisted so ops can audit fallback matches. See #63.
+  verificationMatchType?: VerificationMatchType;
   failureReason?: string;
 }
 
@@ -64,6 +67,7 @@ export async function verifyAndDispatchPickup(
   const lookbackMinutes = Number(process.env['GIVEBUTTER_DONATION_LOOKBACK_MINUTES'] ?? 30);
   const verification = await deps.givebutterService.findRecentTransactionForDonor(
     donor.email,
+    donor.fullName,
     getPickupDonationMinUsd(),
     lookbackMinutes
   );
@@ -80,7 +84,8 @@ export async function verifyAndDispatchPickup(
         status: 'queued_for_dispatch',
         courierDispatchId: dispatch.dispatchId,
         verifiedAmountUsd: verification.amountUsd,
-        verificationTransactionId: verification.transactionId
+        verificationTransactionId: verification.transactionId,
+        verificationMatchType: verification.matchType
       };
     } catch (err) {
       // Payment is verified but Roadie failed. Leave room for webhook recovery
@@ -90,6 +95,7 @@ export async function verifyAndDispatchPickup(
         status: 'awaiting_payment',
         verifiedAmountUsd: verification.amountUsd,
         verificationTransactionId: verification.transactionId,
+        verificationMatchType: verification.matchType,
         failureReason: 'courier_dispatch_failed'
       };
     }
