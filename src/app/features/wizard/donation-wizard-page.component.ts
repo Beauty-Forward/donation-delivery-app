@@ -815,8 +815,7 @@ export class DonationWizardPageComponent {
   }
 
   private buildDonorAddress(city: string, state: string): AddressInfo {
-    // Empty string (not undefined) for a blank line2: the callable client encodes
-    // undefined as null, which the backend's optional() schema rejects.
+    // Empty string, not undefined: httpsCallable encodes undefined as null, which the backend's optional() schema rejects.
     return {
       line1: this.form.addressLine1 || 'Not provided',
       line2: this.form.addressLine2 || '',
