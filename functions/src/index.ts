@@ -29,6 +29,7 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import { isCallableOwnedDoc } from './dispatch-routing.js';
 import { isAlreadyExistsError } from './firestore-utils.js';
@@ -94,11 +95,12 @@ const resendEmailService = new ResendEmailService();
 //
 //   'confirmationEmailSentAt' — success-path emails (pickup / shipping / dropoff)
 //   'recoveryEmailSentAt'     — not_found recovery email
+//   'slaEmailSentAt'          — 24h "we're on it" email for awaiting_payment stalls
 //
 // Read-then-write is non-transactional on purpose: a duplicate would only be
 // wasted bandwidth, and all callers are wrapped in their own happy-path flow,
 // so we swallow send failures rather than propagate them.
-type EmailIdempotencyFlag = 'confirmationEmailSentAt' | 'recoveryEmailSentAt';
+type EmailIdempotencyFlag = 'confirmationEmailSentAt' | 'recoveryEmailSentAt' | 'slaEmailSentAt';
 
 async function sendEmailOnce(
   requestId: string,
@@ -316,6 +318,12 @@ export const createDonationRequest = onCall(
           ...(verification.failureReason
             ? { verificationFailureReason: verification.failureReason }
             : {}),
+          // Persisted even on the courier_dispatch_failed stall so the 24h SLA
+          // email can quote the real, Givebutter-verified amount (the doc's
+          // contribution.amountUsd only gets the verified figure on success).
+          ...(verification.verifiedAmountUsd != null
+            ? { verifiedAmountUsd: verification.verifiedAmountUsd }
+            : {}),
         },
         updatedAt: Timestamp.now(),
       };
@@ -334,8 +342,10 @@ export const createDonationRequest = onCall(
         verification.failureReason === 'not_found'
       ) {
         // Immediate recovery nudge while the wizard surfaces the rejection in-app.
-        // Once the 24h scheduled-loop work in #64 lands, this immediate send moves
-        // behind an onSchedule trigger that queries stalled donations daily.
+        // This stays inline (not in the sendStalledDonationSlaEmails loop): a
+        // 'not_found' result means Givebutter found no payment, so it's an abandoned-
+        // cart nudge, not an awaiting_payment SLA case. The scheduled loop owns the
+        // two awaiting_payment stalls (courier failure / Givebutter API error). See #64.
         await sendEmailOnce(requestRef.id, 'recoveryEmailSentAt', () =>
           resendEmailService.sendDonationRecoveryEmail({
             donor: payload.donor,
@@ -484,6 +494,10 @@ export const verifyContributionAndDispatch = onDocumentCreated(
         ...(verification.failureReason
           ? { verificationFailureReason: verification.failureReason }
           : {}),
+        // See the callable path above — quote the verified amount in the SLA email.
+        ...(verification.verifiedAmountUsd != null
+          ? { verifiedAmountUsd: verification.verifiedAmountUsd }
+          : {}),
       },
       updatedAt: Timestamp.now(),
     };
@@ -506,6 +520,93 @@ export const verifyContributionAndDispatch = onDocumentCreated(
         }),
       );
     }
+  },
+);
+
+// Honors the confirmation page's "we'll email you within 24 hours" promise for the
+// two pickup stalls that land in awaiting_payment:
+//   - courier_dispatch_failed: Givebutter verified payment, only Roadie booking failed
+//   - any other failureReason:  Givebutter's API errored, so payment is still unknown
+//
+// Runs hourly and emails each stalled pickup exactly once (slaEmailSentAt flag).
+// Because it queries live state, a doc the Givebutter webhook already rescued
+// (now queued_for_dispatch) no longer matches, so we never send a redundant
+// "we're having trouble" note. Firestore can't filter on a missing field, so we
+// query by status and filter slaEmailSentAt / recency in memory — the awaiting_payment
+// set is tiny.
+//
+// Recency guard: only email pickups created within RECENCY_WINDOW_MS. This keeps a
+// fresh deploy (or a backlog) from blasting ancient stuck docs that are past SLA and
+// belong to manual ops cleanup; those are logged instead. A pickup currently inside
+// its 24h SLA falls inside the window, so the first run after deploy emails it.
+const SLA_RECENCY_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+export const sendStalledDonationSlaEmails = onSchedule(
+  { region: 'us-central1', schedule: 'every 1 hours', timeZone: 'America/New_York' },
+  async () => {
+    const cutoff = Timestamp.fromMillis(Date.now() - SLA_RECENCY_WINDOW_MS);
+
+    const snapshot = await db
+      .collection('donation_requests')
+      .where('status', '==', 'awaiting_payment')
+      .get();
+
+    let sent = 0;
+    let stale = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+
+      if (data['donationType'] !== 'pickup') {
+        continue;
+      }
+      if (data['slaEmailSentAt']) {
+        continue;
+      }
+
+      const createdAt = data['createdAt'] as Timestamp | undefined;
+      if (!createdAt || createdAt.toMillis() < cutoff.toMillis()) {
+        // Past the SLA window — don't auto-email a donor about a days-old stall.
+        stale += 1;
+        console.warn('[sla] stalled pickup past recency window; needs manual ops review', {
+          requestId: doc.id,
+          createdAt: createdAt?.toDate?.()?.toISOString?.() ?? null,
+        });
+        continue;
+      }
+
+      const donor = data['donor'] as DonorInfo | undefined;
+      if (!donor?.email) {
+        console.warn('[sla] stalled pickup missing donor email; skipping', { requestId: doc.id });
+        continue;
+      }
+
+      // 'courier_dispatch_failed' means payment was verified — reassure with the
+      // verified amount. Anything else is a Givebutter API error (payment unknown).
+      const failureReason = data['metadata']?.['verificationFailureReason'] as string | undefined;
+      const situation =
+        failureReason === 'courier_dispatch_failed' ? 'dispatch_delayed' : 'payment_pending';
+      const verifiedAmountUsd =
+        typeof data['metadata']?.['verifiedAmountUsd'] === 'number'
+          ? (data['metadata']['verifiedAmountUsd'] as number)
+          : undefined;
+
+      await sendEmailOnce(doc.id, 'slaEmailSentAt', () =>
+        resendEmailService.sendStalledPickupEmail({
+          donor,
+          requestId: doc.id,
+          situation,
+          verifiedAmountUsd: situation === 'dispatch_delayed' ? verifiedAmountUsd : undefined,
+        }),
+      );
+      sent += 1;
+    }
+
+    console.info('[sla] stalled-donation sweep complete', {
+      scanned: snapshot.size,
+      emailed: sent,
+      pastWindow: stale,
+    });
   },
 );
 

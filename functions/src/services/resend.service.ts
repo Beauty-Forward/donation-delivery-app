@@ -20,6 +20,10 @@ import {
   buildDonationRecoveryEmail,
   type DonationRecoveryEmailData
 } from '../email/templates/donation-recovery.js';
+import {
+  buildStalledPickupEmail,
+  type StalledPickupEmailData
+} from '../email/templates/stalled-pickup.js';
 
 export class ResendEmailService {
   constructor(
@@ -46,6 +50,14 @@ export class ResendEmailService {
 
   async sendDonationRecoveryEmail(data: DonationRecoveryEmailData): Promise<void> {
     const { subject, html } = buildDonationRecoveryEmail(data);
+    await this.send({ to: data.donor.email, subject, html });
+  }
+
+  // The promised "within 24 hours" follow-up for pickups stuck in awaiting_payment
+  // (courier booking failed, or Givebutter verification errored). Sent by the
+  // sendStalledDonationSlaEmails scheduled loop in index.ts.
+  async sendStalledPickupEmail(data: StalledPickupEmailData): Promise<void> {
+    const { subject, html } = buildStalledPickupEmail(data);
     await this.send({ to: data.donor.email, subject, html });
   }
 
