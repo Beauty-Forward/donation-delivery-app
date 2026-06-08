@@ -172,7 +172,7 @@ export class DonationWizardPageComponent {
   protected readonly shippingHowItWorksSteps: StepLineItem[] = [
     { number: '01', text: 'Pack your beauty products securely in a box or padded mailer' },
     { number: '02', text: 'Ship via USPS, UPS, FedEx, or any carrier of your choice' },
-    { number: '03', text: 'Include your name and email inside the package for your receipt' },
+    { number: '03', text: 'Email us the tracking number after shipping' },
     { number: '04', text: "We'll email you a confirmation once we receive your package" },
   ];
 
