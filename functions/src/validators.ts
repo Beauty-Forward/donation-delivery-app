@@ -51,7 +51,6 @@ const dropoffSchema = z.object({
   dropoffNotes: z.string().optional(),
   locationName: z.string().min(2),
   locationAddress: addressSchema,
-  referenceCode: z.string().optional(),
 });
 
 export const createDonationRequestSchema = z

@@ -53,7 +53,6 @@ import { GivebutterService } from './services/givebutter.service.js';
 import { HubspotService } from './services/hubspot.service.js';
 import { ResendEmailService } from './services/resend.service.js';
 import { verifyAndDispatchPickup } from './services/dispatch.service.js';
-import { generateDropoffReference } from './utils/dropoff-reference.js';
 import { WAREHOUSE_ADDRESS } from './constants/warehouse.js';
 import {
   createContributionSessionSchema,
@@ -182,7 +181,6 @@ export const createDonationRequest = onCall(
       : db.collection('donation_requests').doc();
 
     let status: DonationStatus = 'submitted';
-    let dropoffReference: string | undefined;
     let courierDispatchId: string | undefined;
     let verifiedAmountUsd: number | undefined;
     let failureReason: string | undefined;
@@ -201,8 +199,6 @@ export const createDonationRequest = onCall(
 
     if (payload.donationType === 'dropoff' && payload.dropoff) {
       status = 'dropoff_requested';
-      dropoffReference = generateDropoffReference();
-      payload.dropoff.referenceCode = dropoffReference;
     }
 
     const baseDoc = {
@@ -226,15 +222,9 @@ export const createDonationRequest = onCall(
       },
     };
 
-    const typedCollectionName = `${payload.donationType}_requests`;
-
     try {
       await db.runTransaction(async (transaction) => {
         transaction.create(requestRef, baseDoc);
-        transaction.create(db.collection(typedCollectionName).doc(requestRef.id), {
-          donationRequestId: requestRef.id,
-          ...baseDoc,
-        });
       });
     } catch (err) {
       if (!isAlreadyExistsError(err)) {
@@ -279,7 +269,6 @@ export const createDonationRequest = onCall(
           requestId: requestRef.id,
           status: 'dropoff_requested',
           dropoff: payload.dropoff!,
-          dropoffReference,
           nextSteps: buildNextSteps('dropoff'),
         }),
       );
@@ -338,12 +327,7 @@ export const createDonationRequest = onCall(
         updatedAt: Timestamp.now(),
       };
 
-      await db.runTransaction(async (transaction) => {
-        transaction.set(requestRef, update, { merge: true });
-        transaction.set(db.collection('pickup_requests').doc(requestRef.id), update, {
-          merge: true,
-        });
-      });
+      await requestRef.set(update, { merge: true });
 
       if (verification.status === 'queued_for_dispatch') {
         await notifyPickupQueued(requestRef.id, payload.donor, payload.pickup!, courierDispatchId);
@@ -400,7 +384,6 @@ export const createDonationRequest = onCall(
       donationType: payload.donationType,
       status,
       createdAt: createdAt.toDate().toISOString(),
-      dropoffReference,
       courierDispatchId,
       verifiedAmountUsd,
       failureReason,
@@ -513,7 +496,6 @@ export const verifyContributionAndDispatch = onDocumentCreated(
     };
 
     await snap.ref.set(update, { merge: true });
-    await db.collection('pickup_requests').doc(requestId).set(update, { merge: true });
 
     if (verification.status === 'queued_for_dispatch') {
       await notifyPickupQueued(requestId, data['donor'], data['pickup'], verification.courierDispatchId);
@@ -711,22 +693,6 @@ export const handleGivebutterWebhook = onRequest(
             { merge: true },
           );
 
-        // Mirror the typed-collection doc so downstream readers stay in sync.
-        await db
-          .collection('pickup_requests')
-          .doc(requestId)
-          .set(
-            {
-              status: 'queued_for_dispatch',
-              metadata: {
-                ...(data['metadata'] ?? {}),
-                courierDispatchId: dispatch.dispatchId,
-              },
-              updatedAt: Timestamp.now(),
-            },
-            { merge: true },
-          );
-
         await notifyPickupQueued(requestId, data['donor'], data['pickup'], dispatch.dispatchId);
       } catch (err) {
         console.error('Courier dispatch failed after payment confirmation', err);
@@ -880,46 +846,6 @@ export const handleRoadieWebhook = onRequest(
   },
 );
 
-// ============================================================
-// Inventory Management System (IMS) functions
-// ============================================================
-// Called by the warehouse-facing IMS to look up donation metadata
-// using the drop-off reference code that donors receive from this app.
-
-export const lookupDonationByReference = onCall({ region: 'us-central1' }, async (request) => {
-  const code =
-    typeof request.data?.referenceCode === 'string' ? request.data.referenceCode.trim() : '';
-
-  if (!code) {
-    throw new HttpsError('invalid-argument', 'referenceCode is required');
-  }
-
-  const snapshot = await db
-    .collection('donation_requests')
-    .where('dropoff.referenceCode', '==', code)
-    .limit(1)
-    .get();
-
-  if (snapshot.empty) {
-    return { found: false };
-  }
-
-  const doc = snapshot.docs[0];
-  const data = doc.data();
-
-  return {
-    found: true,
-    requestId: doc.id,
-    donationType: data['donationType'],
-    status: data['status'],
-    donor: data['donor'],
-    dropoff: data['dropoff'],
-    pickup: data['pickup'],
-    shipping: data['shipping'],
-    createdAt: data['createdAt']?.toDate?.()?.toISOString?.() ?? null,
-  };
-});
-
 function buildNextSteps(type: CreateDonationRequestPayload['donationType']): string[] {
   if (type === 'pickup') {
     return [
@@ -937,6 +863,6 @@ function buildNextSteps(type: CreateDonationRequestPayload['donationType']): str
 
   return [
     'Bring your donation during the selected window.',
-    'Share your drop-off reference at check-in for fast verification.',
+    'Check in with your name at the front desk when you arrive.',
   ];
 }

@@ -17,22 +17,11 @@ export interface DropoffConfirmationEmailData {
   requestId: string;
   status: DonationStatus;
   dropoff: DropoffDetails;
-  dropoffReference?: string;
   nextSteps: string[];
 }
 
 export function buildDropoffConfirmationEmail(data: DropoffConfirmationEmailData): { subject: string; html: string } {
-  const { donor, requestId, status, dropoff, dropoffReference, nextSteps } = data;
-
-  const referenceChip = dropoffReference
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 20px 0;">
-        <tr>
-          <td style="background-color:rgba(193, 212, 163, 0.3); border:1px solid rgba(193, 212, 163, 0.5); border-radius:999px; padding:10px 18px;">
-            <span style="font-family:'Alte Haas Grotesk', Arial, Helvetica, sans-serif; font-size:16px; font-weight:700; color:#181000; letter-spacing:0.04em;">${dropoffReference}</span>
-          </td>
-        </tr>
-      </table>`
-    : '';
+  const { donor, requestId, status, dropoff, nextSteps } = data;
 
   let gridRows = gridRowHtml('Request ID', requestId);
   gridRows += gridRowHtml('Status', status);
@@ -54,9 +43,7 @@ export function buildDropoffConfirmationEmail(data: DropoffConfirmationEmailData
     ${statusDotHtml()}
     ${eyebrowHtml('Drop-off scheduled')}
     ${headingHtml('Your drop-off is confirmed')}
-    ${bodyTextHtml(`Hi ${donor.fullName}, thank you for donating with Beauty Forward. Save your drop-off reference and share it at check-in.`)}
-
-    ${referenceChip}
+    ${bodyTextHtml(`Hi ${donor.fullName}, thank you for donating with Beauty Forward. Check in with your name at the front desk when you arrive.`)}
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       ${gridRows}

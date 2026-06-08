@@ -97,8 +97,6 @@ export class DonationApiService {
     const requestId = payload.idempotencyKey ?? crypto.randomUUID();
     const firestore = this.firebaseClient.firestore;
     const donationRef = doc(firestore, 'donation_requests', requestId);
-    const typedCollectionName = `${payload.donationType}_requests`;
-    const typedDocRef = doc(firestore, typedCollectionName, requestId);
 
     await runTransaction(firestore, async (tx) => {
       const existing = await tx.get(donationRef);
@@ -106,24 +104,17 @@ export class DonationApiService {
         return; // callable (or a prior retry) already created it — don't clobber
       }
       tx.set(donationRef, donationDocument);
-      tx.set(typedDocRef, { donationRequestId: requestId, ...donationDocument });
     });
 
     // The callable may have advanced the doc past the initial status (e.g. to
     // queued_for_dispatch). Reflect whatever is actually persisted.
     const finalStatus = ((await getDoc(donationRef)).data()?.['status'] as DonationStatus) ?? status;
 
-    const dropoffReference =
-      payload.donationType === 'dropoff'
-        ? `BFD-${nowIso.slice(0, 10).replace(/-/g, '')}-${requestId.slice(0, 6).toUpperCase()}`
-        : undefined;
-
     return {
       requestId,
       donationType: payload.donationType,
       status: finalStatus,
       createdAt: nowIso,
-      dropoffReference,
       nextSteps: this.buildNextSteps(payload.donationType),
     };
   }
@@ -161,7 +152,7 @@ export class DonationApiService {
 
     return [
       'Bring your items to the warehouse during your selected window.',
-      'Share your drop-off reference at check-in for faster handoff.',
+      'Check in with your name at the front desk when you arrive.',
     ];
   }
 
