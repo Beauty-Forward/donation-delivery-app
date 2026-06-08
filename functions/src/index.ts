@@ -8,6 +8,7 @@
 // our file. We resolve relative to this module — works whether the JS is at lib/ or
 // transpiled elsewhere.
 import { config as loadDotenv } from 'dotenv';
+import { timingSafeEqual } from 'crypto';
 import { join } from 'path';
 // .env.local — emulator-only overrides (sandbox creds, dev escape hatches).
 // CRITICAL: only load it under the emulator. Firebase still SHIPS this file in
@@ -42,7 +43,11 @@ import {
   PickupDetails,
 } from './models.js';
 import { MockRoadieCourierProvider } from './providers/mock-roadie-provider.js';
-import { RoadieCourierProvider } from './providers/roadie-provider.js';
+import {
+  RoadieCourierProvider,
+  isForwardCourierTransition,
+  roadieEventToStatus,
+} from './providers/roadie-provider.js';
 import type { CourierDispatchProvider } from './providers/courier-provider.js';
 import { GivebutterService } from './services/givebutter.service.js';
 import { HubspotService } from './services/hubspot.service.js';
@@ -68,6 +73,11 @@ db.settings({ ignoreUndefinedProperties: true });
 // at runtime, which RoadieCourierProvider reads. Locally it comes from .env.local
 // instead, so the emulator runs against the Roadie sandbox.
 const roadieApiKey = defineSecret('ROADIE_API_KEY');
+// Shared token that proves an inbound webhook is genuinely from Roadie. Roadie
+// has no HMAC signing; instead it echoes back a token we register with the
+// webhook URL, sent as the `x-api-key` header. handleRoadieWebhook rejects any
+// request whose header doesn't match. Locally it comes from .env.local. See #107.
+const roadieWebhookToken = defineSecret('ROADIE_WEBHOOK_TOKEN');
 
 // Lazy-init: pick real-vs-mock on first dispatch call. Cloud Functions Gen2 (and the
 // emulator) populate process.env per-invocation, not at module load, so a top-level
@@ -833,6 +843,105 @@ export const handleGivebutterWebhook = onRequest(
 
   res.status(200).json({ ok: true });
 });
+
+// Constant-time string compare for the webhook token, so an attacker can't probe
+// the secret byte-by-byte via response timing. Unequal lengths short-circuit to
+// false (Buffer.length leak is acceptable and standard for this check).
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
+// Inbound webhook: Roadie calls this whenever a shipment changes state (driver
+// assigned, en route, delivered, canceled…). It's the counterpart to our outbound
+// dispatchPickup — without it, a pickup donation freezes at queued_for_dispatch
+// forever and never reaches a delivered state. See #106, #107.
+//
+// Roadie has no HMAC signing; it authenticates by echoing back a token we register
+// alongside the webhook URL, sent as the `x-api-key` header. We reject anything
+// whose token doesn't match (fail-closed if no token is configured).
+//
+// Matching is a direct doc lookup: we set Roadie's `reference_id` to the
+// donation_request id at create time, and Roadie echoes it back here.
+export const handleRoadieWebhook = onRequest(
+  { region: 'us-central1', secrets: [roadieWebhookToken] },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Method not allowed' });
+      return;
+    }
+
+    const expected = process.env['ROADIE_WEBHOOK_TOKEN'] ?? '';
+    const provided = (typeof req.get('x-api-key') === 'string' && req.get('x-api-key')) || '';
+    if (!expected || !timingSafeEqualStr(provided, expected)) {
+      console.warn('[roadie] webhook rejected: bad or missing x-api-key');
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const event = typeof req.body?.event === 'string' ? req.body.event : 'unknown';
+    const referenceId =
+      typeof req.body?.data?.reference_id === 'string' ? req.body.data.reference_id : '';
+
+    const nextStatus = roadieEventToStatus(event);
+    if (!nextStatus) {
+      // An event we receive but don't model (tracking ping, grouping notice, …).
+      // Ack with 200 so Roadie treats it as delivered and doesn't retry.
+      console.info('[roadie] webhook event not mapped; ignoring', { event, referenceId });
+      res.status(200).json({ ok: true, handled: false });
+      return;
+    }
+
+    if (!referenceId) {
+      console.warn('[roadie] webhook missing reference_id', { event });
+      res.status(200).json({ ok: true, matched: false });
+      return;
+    }
+
+    const ref = db.collection('donation_requests').doc(referenceId);
+    const snapshot = await ref.get();
+    if (!snapshot.exists) {
+      console.warn('[roadie] webhook had no matching donation_request', { referenceId, event });
+      res.status(200).json({ ok: true, matched: false });
+      return;
+    }
+
+    const data = snapshot.data();
+    const currentStatus = data?.['status'] as DonationStatus | undefined;
+
+    // Only ever advance forward. Roadie may redeliver events or deliver them out of
+    // order; this keeps a delivered donation from regressing to in_transit, and stops
+    // delivered/delivery_failed from overwriting each other (first terminal wins).
+    if (!isForwardCourierTransition(currentStatus, nextStatus)) {
+      console.info('[roadie] webhook ignored (not a forward transition)', {
+        referenceId,
+        event,
+        currentStatus,
+        nextStatus,
+      });
+      res.status(200).json({ ok: true, advanced: false });
+      return;
+    }
+
+    const update = { status: nextStatus, updatedAt: Timestamp.now() };
+    await ref.set(update, { merge: true });
+    // Mirror the typed-collection doc so downstream readers stay in sync, matching
+    // the dual-write the dispatch paths already do.
+    if (data?.['donationType'] === 'pickup') {
+      await db.collection('pickup_requests').doc(referenceId).set(update, { merge: true });
+    }
+
+    console.info('[roadie] webhook advanced donation status', {
+      referenceId,
+      event,
+      from: currentStatus,
+      to: nextStatus,
+    });
+    res.status(200).json({ ok: true, advanced: true });
+  },
+);
 
 function buildNextSteps(type: CreateDonationRequestPayload['donationType']): string[] {
   if (type === 'pickup') {
