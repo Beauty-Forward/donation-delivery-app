@@ -1,5 +1,62 @@
-import { AddressInfo, CourierDispatchResult, PickupDetails } from '../models.js';
+import { AddressInfo, CourierDispatchResult, DonationStatus, PickupDetails } from '../models.js';
 import { CourierDispatchInput, CourierDispatchProvider } from './courier-provider.js';
+
+// Maps an inbound Roadie webhook `event` string to the donation status it should
+// advance the doc to, or null for events we receive but don't act on (e.g.
+// tracking pings, grouping notices). Events are namespaced `shipment.*`; see
+// https://docs.roadie.com/. The happy path is:
+//   driver_assigned → en_route/at/pickup_confirmed → delivery_confirmed
+// and canceled / returned / delivery_attempted are terminal failures.
+//
+// Status is only ever advanced forward by the caller (a delivered doc ignores a
+// late en_route ping), so the absolute ordering here doesn't need to be encoded.
+export function roadieEventToStatus(event: string): DonationStatus | null {
+  switch (event) {
+    case 'shipment.driver_assigned':
+      return 'dispatch_requested';
+    case 'shipment.en_route_to_pickup':
+    case 'shipment.at_pickup':
+    case 'shipment.pickup_confirmed':
+    case 'shipment.en_route_to_delivery':
+    case 'shipment.at_delivery':
+      return 'in_transit';
+    case 'shipment.delivery_confirmed':
+    case 'shipment.delivery_confirmed_with_details':
+      return 'delivered';
+    case 'shipment.canceled':
+    case 'shipment.returned':
+    case 'shipment.delivery_attempted':
+      return 'delivery_failed';
+    default:
+      return null;
+  }
+}
+
+// Rank of each courier status along the pickup lifecycle. The webhook only moves
+// a doc forward, so an out-of-order or duplicate event (Roadie may redeliver, and
+// events can arrive out of sequence) can't regress a delivered donation back to
+// in_transit. Statuses outside this map (e.g. pre-dispatch states) rank -1, so any
+// courier event will advance them.
+const COURIER_STATUS_RANK: Partial<Record<DonationStatus, number>> = {
+  queued_for_dispatch: 0,
+  dispatch_requested: 1,
+  in_transit: 2,
+  delivered: 3,
+  delivery_failed: 3,
+};
+
+// True if `next` is a forward (or terminal-correcting) transition from `current`.
+// delivery_failed and delivered share the top rank: whichever lands first wins and
+// neither can overwrite the other, so a delivered donation can't later flip to
+// failed on a stray returned event, and vice versa.
+export function isForwardCourierTransition(
+  current: DonationStatus | undefined,
+  next: DonationStatus,
+): boolean {
+  const currentRank = current != null ? (COURIER_STATUS_RANK[current] ?? -1) : -1;
+  const nextRank = COURIER_STATUS_RANK[next] ?? -1;
+  return nextRank > currentRank;
+}
 
 interface RoadieShipmentResponse {
   id?: string | number;
