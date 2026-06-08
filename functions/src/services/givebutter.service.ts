@@ -76,11 +76,19 @@ export class GivebutterService {
   // Matching priority (see #63): an email match always wins and short-circuits the
   // scan. If no email matches anywhere in the window, we fall back to matching the
   // donor's full name against the transaction's first/last name — this rescues donors
-  // who paid under a different/typo'd email than they typed in the wizard. The name
-  // fallback is intentionally conservative: matches are exact (case-insensitive,
-  // whitespace-normalized, no fuzzy/Levenshtein in v1) and a genuinely ambiguous
-  // window (name matches across two or more *distinct* emails) is rejected rather than
-  // risk dispatching for the wrong donation.
+  // who paid under a different/typo'd email than they typed in the wizard.
+  //
+  // Name comparison (see #119) is order-insensitive and diacritic-insensitive: both
+  // sides are tokenized after NFKD-normalizing and stripping combining marks, so
+  // "Jose Garcia" matches "José"/"García", "Donor Jane" matches "Jane"/"Donor", and a
+  // wizard middle name ("Jane Q Donor") still matches "Jane"/"Donor". We deliberately
+  // stop short of typo-tolerant fuzzy matching (Levenshtein) — see the issue's
+  // out-of-scope list. Givebutter's transaction fields are confirmed to be top-level
+  // `first_name` / `last_name` / `email` (there is no standalone combined `name`; the
+  // `giving_space.name` field is a display label, not a reliable donor identity, so we
+  // don't match on it). A genuinely ambiguous window (name matches across two or more
+  // *distinct* emails) is still rejected rather than risk dispatching for the wrong
+  // donation.
   async findRecentTransactionForDonor(
     donorEmail: string,
     donorFullName: string,
@@ -96,7 +104,7 @@ export class GivebutterService {
       return { kind: 'rejected', reason: 'not_found' };
     }
 
-    const normalizedName = normalizeName(donorFullName);
+    const donorTokens = nameTokens(donorFullName);
 
     const cutoffMs = Date.now() - lookbackMinutes * 60_000;
     const controller = new AbortController();
@@ -193,8 +201,8 @@ export class GivebutterService {
 
           // No email match. Stash as a name-fallback candidate if the name lines up.
           if (
-            normalizedName &&
-            normalizeName(`${txn.first_name ?? ''} ${txn.last_name ?? ''}`) === normalizedName &&
+            donorTokens.size > 0 &&
+            nameTokensMatch(donorTokens, nameTokens(`${txn.first_name ?? ''} ${txn.last_name ?? ''}`)) &&
             !nameCandidates.has(txnEmail)
           ) {
             // First (most recent) transaction per distinct email wins.
@@ -228,7 +236,7 @@ export class GivebutterService {
         // Same name across two or more distinct emails — too ambiguous to safely
         // auto-dispatch. Reject; the donor falls into the recovery path.
         console.warn('Givebutter name fallback ambiguous; rejecting', {
-          normalizedName,
+          donorTokens: [...donorTokens].join(' '),
           distinctEmails: nameCandidates.size,
         });
       }
@@ -246,11 +254,39 @@ export class GivebutterService {
   }
 }
 
-// Normalize a name for exact (non-fuzzy) comparison: trim, lowercase, and collapse
-// internal whitespace so "Jane  Donor" and "jane donor" compare equal. Returns ''
-// for empty/whitespace-only input, which callers treat as "no name to match on".
-function normalizeName(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+// Tokenize a name for order- and diacritic-insensitive comparison (see #119):
+//   1. NFKD-normalize and strip combining marks so "José" -> "jose", "García" -> "garcia".
+//   2. Lowercase and replace any non-letter/non-number (commas, periods, hyphens) with
+//      whitespace so "Donor, Jane" and "Anne-Marie" tokenize cleanly.
+//   3. Split on whitespace into a set of distinct tokens.
+// Returns an empty set for empty/whitespace-only input, which callers treat as
+// "no name to match on".
+function nameTokens(name: string): Set<string> {
+  const tokens = name
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+  return new Set(tokens);
+}
+
+// Decide whether two tokenized names refer to the same person. Order-insensitive by
+// construction (sets). A match requires one token set to be contained in the other:
+//   - Equal sets always match (covers reversed order, accents, and mononyms).
+//   - A strict subset matches only when the smaller set has 2+ tokens, so a wizard
+//     middle name ("jane q donor" ⊇ "jane donor") or an uneven first/last split is
+//     tolerated, but a lone common first name ("jane" ⊆ "jane donor") is NOT enough.
+// Empty sets never match. The multi-email ambiguity guard still applies upstream.
+function nameTokensMatch(a: Set<string>, b: Set<string>): boolean {
+  if (a.size === 0 || b.size === 0) return false;
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  for (const token of small) {
+    if (!large.has(token)) return false;
+  }
+  if (small.size === large.size) return true;
+  return small.size >= 2;
 }
 
 function parseTransactionTimestamp(
