@@ -252,10 +252,12 @@
                 </button>
               }
             </div>
-            <p class="pane-note">
-              If your package is larger than this, email us at {{ bfEmail }} to schedule your
-              donation.
-            </p>
+            @if (deliveryMethod === 'courier') {
+              <p class="pane-note">
+                If your package is larger than this, email us at {{ bfEmail }} to schedule your
+                donation.
+              </p>
+            }
             @if (errors['packageSize']) {
               <p class="field-error spacing-top">{{ errors['packageSize'] }}</p>
             }

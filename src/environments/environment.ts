@@ -22,7 +22,7 @@ export const environment = {
     state: 'NY',
     postalCode: '11232',
     hours: 'Mon-Fri, 9 AM - 5 PM',
-    deliveryNotes: 'TODO: ADD DELIVERY NOTES',
+    deliveryNotes: 'Please leave package with person at front desk',
   },
   integrations: {
     givebutter: {

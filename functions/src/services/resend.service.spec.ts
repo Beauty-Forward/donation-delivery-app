@@ -63,7 +63,6 @@ const DROPOFF: DropoffDetails = {
   preferredTimeWindow: '1 PM – 5 PM',
   locationName: 'Beauty Forward Warehouse',
   locationAddress: WAREHOUSE_ADDRESS,
-  referenceCode: 'BF-ABC123',
 };
 
 describe('ResendEmailService', () => {
@@ -176,7 +175,7 @@ describe('ResendEmailService', () => {
     expect(body.html).toContain('donation-delivery-app--beauty-forward.us-east4.hosted.app');
   });
 
-  it('posts a dropoff confirmation including the reference code', async () => {
+  it('posts a dropoff confirmation addressed to the donor', async () => {
     const { fn, calls } = makeFetchMock([{ status: 200, body: { id: 'email_3' } }]);
     const service = new ResendEmailService(
       'test-key',
@@ -190,13 +189,12 @@ describe('ResendEmailService', () => {
       requestId: 'req_dropoff',
       status: 'dropoff_requested',
       dropoff: DROPOFF,
-      dropoffReference: 'BF-ABC123',
       nextSteps: ['Bring your donation.'],
     });
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
     expect(body.subject).toMatch(/drop-?off/i);
-    expect(body.html).toContain('BF-ABC123');
+    expect(body.html).toContain(DONOR.fullName);
   });
 
   it('honors a custom RESEND_FROM_EMAIL', async () => {
@@ -213,7 +211,6 @@ describe('ResendEmailService', () => {
       requestId: 'req_dropoff',
       status: 'dropoff_requested',
       dropoff: DROPOFF,
-      dropoffReference: 'BF-ABC123',
       nextSteps: [],
     });
 
