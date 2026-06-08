@@ -116,6 +116,139 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     if (result.kind === 'verified') expect(result.matchType).toBe('name_fallback');
   });
 
+  // --- #119: order- and diacritic-insensitive name matching. Each case below is a
+  // row from the issue's false-negatives table that the v1 exact matcher missed. ---
+
+  it('matches when the wizard name carries a middle name the GB record lacks', async () => {
+    mockTransactions([
+      { id: 'txn_1', email: 'other@x.com', first_name: 'Jane', last_name: 'Donor', amount_paid: 25 },
+    ]);
+
+    const result = await makeService().findRecentTransactionForDonor(
+      'wizard@x.com',
+      'Jane Q Donor',
+      MIN_USD,
+      LOOKBACK_MIN,
+    );
+
+    expect(result.kind).toBe('verified');
+    if (result.kind === 'verified') expect(result.matchType).toBe('name_fallback');
+  });
+
+  it('matches when the wizard name has first/last reversed', async () => {
+    mockTransactions([
+      { id: 'txn_1', email: 'other@x.com', first_name: 'Jane', last_name: 'Donor', amount_paid: 25 },
+    ]);
+
+    const result = await makeService().findRecentTransactionForDonor(
+      'wizard@x.com',
+      'Donor Jane',
+      MIN_USD,
+      LOOKBACK_MIN,
+    );
+
+    expect(result.kind).toBe('verified');
+    if (result.kind === 'verified') expect(result.matchType).toBe('name_fallback');
+  });
+
+  it('matches the "Last, First" comma form', async () => {
+    mockTransactions([
+      { id: 'txn_1', email: 'other@x.com', first_name: 'Jane', last_name: 'Donor', amount_paid: 25 },
+    ]);
+
+    const result = await makeService().findRecentTransactionForDonor(
+      'wizard@x.com',
+      'Donor, Jane',
+      MIN_USD,
+      LOOKBACK_MIN,
+    );
+
+    expect(result.kind).toBe('verified');
+    if (result.kind === 'verified') expect(result.matchType).toBe('name_fallback');
+  });
+
+  it('matches across accents/diacritics (José García == Jose Garcia)', async () => {
+    mockTransactions([
+      { id: 'txn_1', email: 'other@x.com', first_name: 'José', last_name: 'García', amount_paid: 25 },
+    ]);
+
+    const result = await makeService().findRecentTransactionForDonor(
+      'wizard@x.com',
+      'Jose Garcia',
+      MIN_USD,
+      LOOKBACK_MIN,
+    );
+
+    expect(result.kind).toBe('verified');
+    if (result.kind === 'verified') expect(result.matchType).toBe('name_fallback');
+  });
+
+  it('matches an uneven first/last split (Mary Anne Smith == Mary / Anne Smith)', async () => {
+    mockTransactions([
+      { id: 'txn_1', email: 'other@x.com', first_name: 'Mary', last_name: 'Anne Smith', amount_paid: 25 },
+    ]);
+
+    const result = await makeService().findRecentTransactionForDonor(
+      'wizard@x.com',
+      'Mary Anne Smith',
+      MIN_USD,
+      LOOKBACK_MIN,
+    );
+
+    expect(result.kind).toBe('verified');
+    if (result.kind === 'verified') expect(result.matchType).toBe('name_fallback');
+  });
+
+  it('does NOT match on a lone shared first name (guards against over-loosening)', async () => {
+    // Wizard supplied only "Jane"; GB record is "Jane Donor". A single shared token
+    // must not be enough to dispatch — otherwise any "Jane" would match.
+    mockTransactions([
+      { id: 'txn_1', email: 'other@x.com', first_name: 'Jane', last_name: 'Donor', amount_paid: 25 },
+    ]);
+
+    const result = await makeService().findRecentTransactionForDonor(
+      'wizard@x.com',
+      'Jane',
+      MIN_USD,
+      LOOKBACK_MIN,
+    );
+
+    expect(result).toEqual({ kind: 'rejected', reason: 'not_found' });
+  });
+
+  it('still rejects genuinely different names that share no tokens', async () => {
+    mockTransactions([
+      { id: 'txn_1', email: 'other@x.com', first_name: 'Bob', last_name: 'Smith', amount_paid: 25 },
+    ]);
+
+    const result = await makeService().findRecentTransactionForDonor(
+      'wizard@x.com',
+      'Jane Donor',
+      MIN_USD,
+      LOOKBACK_MIN,
+    );
+
+    expect(result).toEqual({ kind: 'rejected', reason: 'not_found' });
+  });
+
+  it('keeps the ambiguity guard under loosened matching (diacritic variants, distinct emails)', async () => {
+    // Two distinct donors whose names both normalize to "jose garcia" — still too
+    // ambiguous to auto-dispatch even though the loosened matcher now hits both.
+    mockTransactions([
+      { id: 'txn_a', email: 'jose.a@x.com', first_name: 'José', last_name: 'García', amount_paid: 25 },
+      { id: 'txn_b', email: 'jose.b@y.com', first_name: 'Jose', last_name: 'Garcia', amount_paid: 25 },
+    ]);
+
+    const result = await makeService().findRecentTransactionForDonor(
+      'wizard@x.com',
+      'Jose Garcia',
+      MIN_USD,
+      LOOKBACK_MIN,
+    );
+
+    expect(result).toEqual({ kind: 'rejected', reason: 'not_found' });
+  });
+
   it('rejects when neither email nor name match', async () => {
     mockTransactions([
       { id: 'txn_1', email: 'someone@else.com', first_name: 'Bob', last_name: 'Smith', amount_paid: 25 },
