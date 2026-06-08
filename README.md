@@ -116,13 +116,12 @@ Every route loads the wizard component; `data.mode` tells it which step to rende
 `payment_verification_failed`, `queued_for_dispatch`, `dispatch_requested`,
 `awaiting_shipment`, `dropoff_requested`, `completed`.
 
-### Type-specific collections
-
-`pickup_requests/{requestId}`, `shipping_requests/{requestId}`, `dropoff_requests/{requestId}` — each mirrors the base document and includes `donationRequestId`.
+`donation_requests` is the single source of truth — every donation type lives there,
+distinguished by `donationType`.
 
 ### Security rules
 
-`firestore.rules` is create-only: every collection is `allow create: if true`, with
+`firestore.rules` is create-only: `donation_requests` is `allow create: if true`, with
 reads, updates, and deletes denied. Validation is enforced server-side by the Cloud
 Functions callables and their Zod validators; direct client `create` is a fallback path.
 

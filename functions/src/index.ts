@@ -216,15 +216,9 @@ export const createDonationRequest = onCall(
       },
     };
 
-    const typedCollectionName = `${payload.donationType}_requests`;
-
     try {
       await db.runTransaction(async (transaction) => {
         transaction.create(requestRef, baseDoc);
-        transaction.create(db.collection(typedCollectionName).doc(requestRef.id), {
-          donationRequestId: requestRef.id,
-          ...baseDoc,
-        });
       });
     } catch (err) {
       if (!isAlreadyExistsError(err)) {
@@ -328,12 +322,7 @@ export const createDonationRequest = onCall(
         updatedAt: Timestamp.now(),
       };
 
-      await db.runTransaction(async (transaction) => {
-        transaction.set(requestRef, update, { merge: true });
-        transaction.set(db.collection('pickup_requests').doc(requestRef.id), update, {
-          merge: true,
-        });
-      });
+      await requestRef.set(update, { merge: true });
 
       if (verification.status === 'queued_for_dispatch') {
         await notifyPickupQueued(requestRef.id, payload.donor, payload.pickup!, courierDispatchId);
@@ -503,7 +492,6 @@ export const verifyContributionAndDispatch = onDocumentCreated(
     };
 
     await snap.ref.set(update, { merge: true });
-    await db.collection('pickup_requests').doc(requestId).set(update, { merge: true });
 
     if (verification.status === 'queued_for_dispatch') {
       await notifyPickupQueued(requestId, data['donor'], data['pickup'], verification.courierDispatchId);
@@ -688,22 +676,6 @@ export const handleGivebutterWebhook = onRequest(
 
         await db
           .collection('donation_requests')
-          .doc(requestId)
-          .set(
-            {
-              status: 'queued_for_dispatch',
-              metadata: {
-                ...(data['metadata'] ?? {}),
-                courierDispatchId: dispatch.dispatchId,
-              },
-              updatedAt: Timestamp.now(),
-            },
-            { merge: true },
-          );
-
-        // Mirror the typed-collection doc so downstream readers stay in sync.
-        await db
-          .collection('pickup_requests')
           .doc(requestId)
           .set(
             {

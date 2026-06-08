@@ -97,8 +97,6 @@ export class DonationApiService {
     const requestId = payload.idempotencyKey ?? crypto.randomUUID();
     const firestore = this.firebaseClient.firestore;
     const donationRef = doc(firestore, 'donation_requests', requestId);
-    const typedCollectionName = `${payload.donationType}_requests`;
-    const typedDocRef = doc(firestore, typedCollectionName, requestId);
 
     await runTransaction(firestore, async (tx) => {
       const existing = await tx.get(donationRef);
@@ -106,7 +104,6 @@ export class DonationApiService {
         return; // callable (or a prior retry) already created it — don't clobber
       }
       tx.set(donationRef, donationDocument);
-      tx.set(typedDocRef, { donationRequestId: requestId, ...donationDocument });
     });
 
     // The callable may have advanced the doc past the initial status (e.g. to

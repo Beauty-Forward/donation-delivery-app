@@ -6,23 +6,5 @@ service cloud.firestore {
       allow read: if false;
       allow update, delete: if false;
     }
-
-    match /pickup_requests/{requestId} {
-      allow create: if true;
-      allow read: if false;
-      allow update, delete: if false;
-    }
-
-    match /shipping_requests/{requestId} {
-      allow create: if true;
-      allow read: if false;
-      allow update, delete: if false;
-    }
-
-    match /dropoff_requests/{requestId} {
-      allow create: if true;
-      allow read: if false;
-      allow update, delete: if false;
-    }
   }
 }
