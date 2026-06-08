@@ -443,7 +443,7 @@
 
             <p class="section-eyebrow spacing-top-lg">Pickup Time</p>
             <div class="time-grid">
-              @for (time of pickupTimes; track time) {
+              @for (time of availableTimes; track time) {
                 <button
                   type="button"
                   class="time-option"
@@ -452,6 +452,10 @@
                 >
                   {{ time }}
                 </button>
+              } @empty {
+                <p class="pane-subtitle">
+                  No more pickup times are available today. Please choose another date.
+                </p>
               }
             </div>
             @if (errors['time']) {
