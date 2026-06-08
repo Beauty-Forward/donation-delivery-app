@@ -188,6 +188,14 @@ export class DonationWizardPageComponent {
 
   protected readonly pickupDateOptions = this.buildPickupDateOptions();
 
+  // Time slots available for the currently selected date. Identical to pickupTimes
+  // for any future day; for a same-day pickup it drops slots whose window has
+  // already ended so a donor can't pick an impossible time. Recomputed on each
+  // change-detection pass via the selectedDate it reads.
+  protected get availableTimes(): string[] {
+    return this.timeOptionsFor(this.selectedDate);
+  }
+
   protected step = 0;
   protected consentProducts = false;
   protected consentLiability = false;
@@ -540,6 +548,11 @@ export class DonationWizardPageComponent {
   protected selectDate(iso: string): void {
     this.selectedDate = iso;
     this.clearError('date');
+    // Drop a previously chosen slot if switching to a day (e.g. today) where that
+    // slot has already passed, so it can't silently survive into review/submit.
+    if (this.selectedTime && !this.availableTimes.includes(this.selectedTime)) {
+      this.selectedTime = null;
+    }
     this.persist();
   }
 
@@ -1046,6 +1059,11 @@ export class DonationWizardPageComponent {
 
     if (!this.selectedTime) {
       errors['time'] = 'Select a time';
+    } else if (!this.availableTimes.includes(this.selectedTime)) {
+      // A slot restored from a prior session can fall into the past by the time the
+      // donor returns; force a fresh pick rather than booking a window that's gone.
+      this.selectedTime = null;
+      errors['time'] = 'That time has passed — select a time';
     }
 
     if (!this.form.courierNotes.trim()) {
@@ -1217,11 +1235,54 @@ export class DonationWizardPageComponent {
     void this.transitionRoute('/pickup', 5, false);
   }
 
+  // Slots whose end time is still in the future for the given date. For any day
+  // other than today every slot is kept; for today, slots that have already ended
+  // are dropped. Unparseable input is kept (fail open) — the backend re-checks the
+  // real lead time at dispatch.
+  private timeOptionsFor(iso: string | null): string[] {
+    if (!iso) {
+      return this.pickupTimes;
+    }
+
+    const now = Date.now();
+    return this.pickupTimes.filter((slot) => {
+      const end = this.slotEndTime(iso, slot);
+      return end === null || end > now;
+    });
+  }
+
+  // Epoch ms of a slot's end, interpreting the slot's clock time on the iso
+  // calendar day in the browser's local zone (donors are in NYC/ET). Returns null
+  // if either the date or the slot's end time can't be parsed.
+  private slotEndTime(iso: string, slot: string): number | null {
+    const end = slot.split('-')[1]?.trim();
+    const match = end?.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    const dateParts = iso.split('-').map((part) => Number(part));
+    if (!match || dateParts.length !== 3 || dateParts.some((part) => Number.isNaN(part))) {
+      return null;
+    }
+
+    let hour = Number(match[1]);
+    const minute = Number(match[2]);
+    const meridiem = match[3].toUpperCase();
+    if (meridiem === 'PM' && hour !== 12) {
+      hour += 12;
+    } else if (meridiem === 'AM' && hour === 12) {
+      hour = 0;
+    }
+
+    const [year, month, day] = dateParts;
+    return new Date(year, month - 1, day, hour, minute, 0, 0).getTime();
+  }
+
   private buildPickupDateOptions(): PickupDateOption[] {
     const options: PickupDateOption[] = [];
     const now = new Date();
 
-    for (let dayOffset = 1; dayOffset <= 14; dayOffset += 1) {
+    // Start at 0 so today is selectable (same-day pickup). The weekend skip below
+    // still keeps Saturdays and Sundays out, so a same-day booking only ever lands
+    // on a weekday. The backend enforces the real per-slot lead time at dispatch.
+    for (let dayOffset = 0; dayOffset <= 14; dayOffset += 1) {
       const date = new Date(now);
       date.setDate(now.getDate() + dayOffset);
 
