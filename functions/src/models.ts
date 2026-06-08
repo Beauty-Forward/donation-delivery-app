@@ -56,7 +56,6 @@ export interface DropoffDetails {
   dropoffNotes?: string;
   locationName: string;
   locationAddress: AddressInfo;
-  referenceCode?: string;
 }
 
 export interface CreateDonationRequestPayload {
@@ -79,7 +78,6 @@ export interface DonationSubmissionResult {
   status: DonationStatus;
   createdAt: string;
   nextSteps: string[];
-  dropoffReference?: string;
   courierDispatchId?: string;
   verifiedAmountUsd?: number;
   failureReason?: string;
