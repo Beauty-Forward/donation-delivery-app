@@ -101,7 +101,7 @@
             </button>
 
             <div class="wizard-nav">
-              <button type="button" class="btn btn-secondary" (click)="backTo(0)">← Back</button>
+              <button type="button" class="btn btn-secondary" (click)="goBack()">← Back</button>
               <button
                 type="button"
                 class="btn btn-primary"
@@ -140,7 +140,7 @@
             </div>
 
             <div class="wizard-nav">
-              <button type="button" class="btn btn-secondary" (click)="backTo(1)">← Back</button>
+              <button type="button" class="btn btn-secondary" (click)="goBack()">← Back</button>
               <button
                 type="button"
                 class="btn btn-primary"
@@ -408,7 +408,7 @@
             }
 
             <div class="wizard-nav">
-              <button type="button" class="btn btn-secondary" (click)="backTo(2)">← Back</button>
+              <button type="button" class="btn btn-secondary" (click)="goBack()">← Back</button>
               <button type="button" class="btn btn-primary" (click)="continueFromDetails()">
                 Continue →
               </button>
@@ -485,7 +485,7 @@
             </div>
 
             <div class="wizard-nav">
-              <button type="button" class="btn btn-secondary" (click)="backTo(4)">← Back</button>
+              <button type="button" class="btn btn-secondary" (click)="goBack()">← Back</button>
               <button type="button" class="btn btn-primary" (click)="continueFromSchedule()">
                 Review →
               </button>
@@ -520,7 +520,7 @@
             </div>
 
             <div class="wizard-nav">
-              <button type="button" class="btn btn-secondary" (click)="backTo(3)">← Back</button>
+              <button type="button" class="btn btn-secondary" (click)="goBack()">← Back</button>
               <button type="button" class="btn btn-primary" (click)="continueFromDonation()">
                 I've completed my donation →
               </button>
@@ -674,7 +674,7 @@
                   type="button"
                   class="btn btn-secondary"
                   [disabled]="isSubmitting"
-                  (click)="backFromReview()"
+                  (click)="goBack()"
                 >
                   ← Back
                 </button>
@@ -722,7 +722,7 @@
             </div>
 
             <div class="wizard-nav">
-              <button type="button" class="btn btn-secondary" (click)="backTo(3)">← Back</button>
+              <button type="button" class="btn btn-secondary" (click)="goBack()">← Back</button>
               <button type="button" class="btn btn-primary" (click)="continueFromDropoffInfo()">
                 Review →
               </button>
@@ -760,7 +760,7 @@
             </div>
 
             <div class="wizard-nav">
-              <button type="button" class="btn btn-secondary" (click)="backTo(3)">← Back</button>
+              <button type="button" class="btn btn-secondary" (click)="goBack()">← Back</button>
               <button type="button" class="btn btn-primary" (click)="continueFromShippingInfo()">
                 Review →
               </button>

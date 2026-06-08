@@ -824,11 +824,42 @@ export class DonationWizardPageComponent {
     };
   }
 
-  protected backTo(step: number): void {
-    this.transitionLocal(step);
+  // Single source of truth for the Back button on every step. The previous step
+  // is not always step-1, and several steps live on their own route (/pickup,
+  // /dropoff, /shipping) whose predecessor (Details, step 3) lives back at '/'.
+  // A plain transitionLocal would change the step without restoring that URL,
+  // leaving the step/URL out of sync (and on the courier schedule it pointed at
+  // its own step, so Back did nothing). Mirror the forward navigation instead.
+  protected goBack(): void {
+    switch (this.step) {
+      case 1: // Guidelines -> Welcome
+        this.transitionLocal(0);
+        return;
+      case 2: // Method -> Guidelines
+        this.transitionLocal(1);
+        return;
+      case 3: // Details -> Method
+        this.transitionLocal(2);
+        return;
+      case 4: // Courier schedule (/pickup) -> Details (home)
+        void this.transitionRoute('/', 3, false);
+        return;
+      case 5: // Courier donation widget -> schedule, both on /pickup
+        this.transitionLocal(4);
+        return;
+      case 6: // Review -> method-specific previous step
+        this.backFromReview();
+        return;
+      case 7: // Dropoff info (/dropoff) -> Details (home)
+      case 8: // Shipping info (/shipping) -> Details (home)
+        void this.transitionRoute('/', 3, false);
+        return;
+      default:
+        this.transitionLocal(0);
+    }
   }
 
-  protected backFromReview(): void {
+  private backFromReview(): void {
     if (this.deliveryMethod === 'courier') {
       void this.transitionRoute('/pickup', 5, false);
       return;
