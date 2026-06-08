@@ -592,6 +592,103 @@ export const sendStalledDonationSlaEmails = onSchedule(
   },
 );
 
+// Daily backstop for the immediate payment_verification_failed recovery email.
+// That nudge fires inline from createDonationRequest / verifyContributionAndDispatch
+// the moment Givebutter rejects a pickup ('not_found'), but a transient Resend
+// outage — or a cold-start crash after the send but before sendEmailOnce stamps the
+// flag — would leave the donor with no email and the doc stuck in
+// payment_verification_failed forever. This sweep re-sends through the SAME
+// recoveryEmailSentAt flag, so a donor who already got the immediate email is never
+// emailed twice. A doc the donor rescued late (paid -> webhook -> queued_for_dispatch)
+// no longer matches the status query, so it's never nudged.
+//
+// Two age gates bound the sweep. MIN_AGE: only docs stalled past 24h qualify, giving
+// the immediate send (and any late webhook) time to settle before we step in.
+// RECENCY_CAP: a fresh deploy (or a backlog) must not blast ancient failures that are
+// well past any reasonable recovery window and belong to manual ops cleanup; those are
+// logged instead. Firestore can't filter on a missing field, so we query by status and
+// filter recoveryEmailSentAt / age in memory — the failed set is tiny.
+const RECOVERY_MIN_AGE_MS = 24 * 60 * 60 * 1000;
+const RECOVERY_RECENCY_CAP_MS = 7 * 24 * 60 * 60 * 1000;
+
+export const sendStalledRecoveryEmails = onSchedule(
+  { region: 'us-central1', schedule: 'every day 09:00', timeZone: 'America/New_York' },
+  async () => {
+    const now = Date.now();
+    const minAgeCutoff = now - RECOVERY_MIN_AGE_MS;
+    const recencyCutoff = now - RECOVERY_RECENCY_CAP_MS;
+
+    const snapshot = await db
+      .collection('donation_requests')
+      .where('status', '==', 'payment_verification_failed')
+      .get();
+
+    let sent = 0;
+    let tooFresh = 0;
+    let stale = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+
+      // payment_verification_failed only ever lands on pickups (verification runs
+      // for pickup alone), and the recovery copy is pickup-specific. Guard anyway.
+      if (data['donationType'] !== 'pickup') {
+        continue;
+      }
+      if (data['recoveryEmailSentAt']) {
+        continue;
+      }
+
+      const createdAt = data['createdAt'] as Timestamp | undefined;
+      if (!createdAt) {
+        console.warn('[recovery] verification-failed doc missing createdAt; skipping', {
+          requestId: doc.id,
+        });
+        continue;
+      }
+      if (createdAt.toMillis() > minAgeCutoff) {
+        // Younger than 24h — the immediate recovery send (or a late webhook) may
+        // still resolve it. A later run picks it up once it crosses the threshold.
+        tooFresh += 1;
+        continue;
+      }
+      if (createdAt.toMillis() < recencyCutoff) {
+        // Past the recency cap — don't auto-nudge a donor about a week-old failure.
+        stale += 1;
+        console.warn('[recovery] verification-failed doc past recency cap; needs manual ops review', {
+          requestId: doc.id,
+          createdAt: createdAt.toDate().toISOString(),
+        });
+        continue;
+      }
+
+      const donor = data['donor'] as DonorInfo | undefined;
+      if (!donor?.email) {
+        // e.g. failureReason 'missing_donor_email' — nothing to send to.
+        console.warn('[recovery] verification-failed doc missing donor email; skipping', {
+          requestId: doc.id,
+        });
+        continue;
+      }
+
+      await sendEmailOnce(doc.id, 'recoveryEmailSentAt', () =>
+        resendEmailService.sendDonationRecoveryEmail({
+          donor,
+          requestId: doc.id,
+        }),
+      );
+      sent += 1;
+    }
+
+    console.info('[recovery] stalled verification-failed sweep complete', {
+      scanned: snapshot.size,
+      emailed: sent,
+      tooFresh,
+      pastCap: stale,
+    });
+  },
+);
+
 export const handleGivebutterWebhook = onRequest(
   { region: 'us-central1', secrets: [roadieApiKey] },
   async (req, res) => {
