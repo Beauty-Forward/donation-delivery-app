@@ -32,7 +32,7 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
-import { isCallableOwnedDoc } from './dispatch-routing.js';
+import { CALLABLE_DOC_SOURCE, isCallableOwnedDoc } from './dispatch-routing.js';
 import { isAlreadyExistsError } from './firestore-utils.js';
 import {
   CreateContributionSessionPayload,
@@ -58,6 +58,7 @@ import {
   createContributionSessionSchema,
   createDonationRequestSchema,
   getPickupDonationMinUsd,
+  saveDonationDraftSchema,
 } from './validators.js';
 
 initializeApp();
@@ -160,6 +161,114 @@ async function notifyPickupQueued(
   );
 }
 
+// The two pre-payment draft states saveDonationDraft writes. createDonationRequest
+// promotes a doc in either state (rather than backing off as it would for a real,
+// already-dispatched doc), and the verifyContributionAndDispatch trigger skips
+// them (a draft has no payment to verify yet). See #138.
+function isPrePaymentDraftStatus(status: DonationStatus | undefined): boolean {
+  return status === 'draft' || status === 'pending_payment';
+}
+
+// Persist a donation draft as the donor moves through the wizard, BEFORE they
+// reach the Givebutter widget. This is the linchpin for orphaned-payment recovery
+// (#138): the doc — keyed by the client's stable idempotencyKey — exists with the
+// full donor + pickup details before any money moves, so the reconciliation sweep
+// can match a payment to it even if the donor never returns to click "confirm".
+// It ALSO captures the donor as a reachable Beauty Forward lead the moment we have
+// their contact info, so nobody who starts the wizard is dropped.
+//
+// Pure draft write: NO Givebutter verification, NO Roadie dispatch. createDonationRequest
+// (donor clicks confirm) or the sweep (donor never returns) owns promotion to dispatch.
+export const saveDonationDraft = onCall(
+  { region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' },
+  async (request) => {
+    const parsed = saveDonationDraftSchema.safeParse(request.data);
+    if (!parsed.success) {
+      throw new HttpsError('invalid-argument', parsed.error.flatten().formErrors.join(' '));
+    }
+
+    const payload = parsed.data as CreateDonationRequestPayload & { idempotencyKey: string };
+    const ref = db.collection('donation_requests').doc(payload.idempotencyKey);
+    const now = Timestamp.now();
+
+    // A complete pickup draft (pickup details present) is 'pending_payment' — the
+    // sweep's reconciliation target. Anything else is a 'draft' lead: a donor whose
+    // pickup isn't scheduled yet, or a non-pickup flow that never pays.
+    const isCompletePickup =
+      payload.donationType === 'pickup' &&
+      !!payload.pickup?.preferredDate &&
+      !!payload.pickup?.preferredTimeWindow;
+    const draftStatus: DonationStatus = isCompletePickup ? 'pending_payment' : 'draft';
+
+    // Upsert (merge): progressive saves across wizard steps collapse onto one doc.
+    // Transaction-guarded so a late straggler save from an earlier step can't
+    // clobber a doc the donor already finalized (createDonationRequest promoted it
+    // past the draft states, possibly already dispatching a courier).
+    let persistedStatus: DonationStatus = draftStatus;
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const existing = snap.data();
+      const existingStatus = existing?.['status'] as DonationStatus | undefined;
+      if (existingStatus && !isPrePaymentDraftStatus(existingStatus)) {
+        persistedStatus = existingStatus;
+        return; // already finalized — ignore this stale draft save
+      }
+      tx.set(
+        ref,
+        {
+          donationType: payload.donationType,
+          donor: payload.donor,
+          contribution: payload.contribution,
+          pickup: payload.pickup,
+          shipping: payload.shipping,
+          dropoff: payload.dropoff,
+          status: draftStatus,
+          idempotencyKey: payload.idempotencyKey,
+          updatedAt: now,
+          ...(snap.exists ? {} : { createdAt: now }),
+          metadata: {
+            ...(existing?.['metadata'] ?? {}),
+            ...payload.metadata,
+            // Tag as callable-owned so the verifyContributionAndDispatch onCreate
+            // trigger skips this draft (it would otherwise try to verify a payment
+            // that hasn't happened). See dispatch-routing.ts and #112.
+            source: CALLABLE_DOC_SOURCE,
+            isDraft: true,
+          },
+        },
+        { merge: true },
+      );
+    });
+
+    // Lead capture: mirror createDonationRequest's HubSpot upsert so a donor who
+    // bails mid-wizard is still reachable. Best-effort — never fail the draft on it.
+    const metaCity =
+      typeof payload.metadata?.['city'] === 'string' ? (payload.metadata['city'] as string) : undefined;
+    const metaState =
+      typeof payload.metadata?.['state'] === 'string'
+        ? (payload.metadata['state'] as string)
+        : undefined;
+    const packageSize =
+      typeof payload.metadata?.['packageSize'] === 'string'
+        ? (payload.metadata['packageSize'] as string)
+        : undefined;
+    await hubspotService
+      .upsertDonorContact({
+        email: payload.donor.email,
+        fullName: payload.donor.fullName,
+        phone: payload.donor.phone,
+        donationMethod: payload.donationType,
+        donationAmountUsd: payload.contribution.amountUsd,
+        city: metaCity ?? payload.pickup?.pickupAddress?.city,
+        state: metaState ?? payload.pickup?.pickupAddress?.state,
+        packageSize,
+      })
+      .catch((err) => console.warn('HubSpot upsert (draft) failed', err));
+
+    return { requestId: ref.id, status: persistedStatus };
+  },
+);
+
 export const createDonationRequest = onCall(
   { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB', secrets: [roadieApiKey] },
   async (request) => {
@@ -230,20 +339,42 @@ export const createDonationRequest = onCall(
       if (!isAlreadyExistsError(err)) {
         throw err;
       }
-      // Same idempotencyKey already created this donation — the direct-Firestore
-      // fallback (or a retry of this callable). Don't duplicate the doc or
-      // re-dispatch; whoever created it owns dispatch (its inline path or its
-      // onCreate trigger). Return the doc's current state. See #113 (L1).
+      // A doc already exists at this idempotencyKey. Two cases:
       const existing = (await requestRef.get()).data() ?? {};
-      const existingMeta = (existing['metadata'] ?? {}) as Record<string, unknown>;
-      return {
-        requestId: requestRef.id,
-        donationType: payload.donationType,
-        status: (existing['status'] as DonationStatus) ?? status,
-        createdAt: createdAt.toDate().toISOString(),
-        courierDispatchId: existingMeta['courierDispatchId'] as string | undefined,
-        nextSteps: buildNextSteps(payload.donationType),
-      } satisfies DonationSubmissionResult;
+      const existingStatus = existing['status'] as DonationStatus | undefined;
+
+      if (!isPrePaymentDraftStatus(existingStatus)) {
+        // (1) A real, already-owned doc — the direct-Firestore fallback or a retry
+        // of this callable. Don't duplicate or re-dispatch; whoever created it owns
+        // dispatch (its inline path or its onCreate trigger). Return its state. #113.
+        const existingMeta = (existing['metadata'] ?? {}) as Record<string, unknown>;
+        return {
+          requestId: requestRef.id,
+          donationType: payload.donationType,
+          status: existingStatus ?? status,
+          createdAt: createdAt.toDate().toISOString(),
+          courierDispatchId: existingMeta['courierDispatchId'] as string | undefined,
+          nextSteps: buildNextSteps(payload.donationType),
+        } satisfies DonationSubmissionResult;
+      }
+
+      // (2) Our own pre-payment draft (saveDonationDraft wrote it as the donor
+      // moved through the wizard). The donor has now confirmed + (claims to have)
+      // paid, so promote the draft to the same starting state a fresh create would
+      // produce — preserving the original createdAt — then fall through to the
+      // verify + dispatch logic below. set(merge) is an update, so it does NOT
+      // re-fire the onCreate trigger. See #138.
+      await requestRef.set(
+        {
+          ...baseDoc,
+          createdAt: (existing['createdAt'] as Timestamp | undefined) ?? createdAt,
+          updatedAt: Timestamp.now(),
+          // Clear the draft marker — this is now a real order. (Firestore deep-merges
+          // maps, so without this the draft's isDraft:true would survive the merge.)
+          metadata: { ...baseDoc.metadata, isDraft: false },
+        },
+        { merge: true },
+      );
     }
 
     // Shipping + dropoff have no async verification step — the doc create *is* the
@@ -425,6 +556,15 @@ export const verifyContributionAndDispatch = onDocumentCreated(
     const requestId = event.params['requestId'];
 
     if (data['donationType'] !== 'pickup') {
+      return;
+    }
+
+    // Pre-payment draft (saveDonationDraft, #138). There's no payment to verify
+    // yet — promotion to dispatch is owned by createDonationRequest (donor clicks
+    // confirm) or the reconciliation sweep (donor never returns). The draft is also
+    // tagged metadata.source = CALLABLE_DOC_SOURCE, so isCallableOwnedDoc below
+    // would catch it too; this status guard is the explicit, primary gate.
+    if (isPrePaymentDraftStatus(data['status'] as DonationStatus | undefined)) {
       return;
     }
 

@@ -44,6 +44,10 @@ export interface DonationWizardState {
   consentProducts: boolean;
   consentLiability: boolean;
   deliveryMethod: DeliveryMethod | null;
+  // Stable per wizard session, generated once on the first draft save. Shared by
+  // the progressive draft saves AND the final createDonationRequest so they all
+  // collapse onto one donation_requests doc (and one Roadie idempotency_key). #138.
+  idempotencyKey: string | null;
   form: WizardFormState;
   gbSessionId: string | null;
   gbAmountUsd: number | null;
@@ -76,6 +80,7 @@ export const DEFAULT_DONATION_WIZARD_STATE: DonationWizardState = {
   consentProducts: false,
   consentLiability: false,
   deliveryMethod: null,
+  idempotencyKey: null,
   form: { ...DEFAULT_WIZARD_FORM_STATE },
   gbSessionId: null,
   gbAmountUsd: null,

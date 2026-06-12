@@ -1,6 +1,14 @@
 export type DonationType = 'pickup' | 'shipping' | 'dropoff';
 
 export type DonationStatus =
+  // Pre-payment draft states, written by saveDonationDraft as the donor moves
+  // through the wizard (before they reach the Givebutter widget). 'draft' is a
+  // captured lead with partial info; 'pending_payment' is a complete pickup
+  // awaiting a Givebutter payment. The reconciliation sweep (see #138) matches a
+  // payment to a 'pending_payment' doc and promotes it to queued_for_dispatch.
+  // Neither is a terminal state. See #138.
+  | 'draft'
+  | 'pending_payment'
   | 'submitted'
   | 'verifying_payment'
   | 'awaiting_payment'

@@ -52,6 +52,20 @@ export class DonationApiService {
     }
   }
 
+  // Persist a donation draft as the donor moves through the wizard, before the
+  // Givebutter widget. Best-effort and non-blocking: the draft is a safety net
+  // (orphaned-payment recovery) and a lead capture, so a failure here must never
+  // stop the donor from advancing. Reuses the stable idempotencyKey so the draft
+  // and the eventual createDonationRequest collapse onto one doc. See #138.
+  async saveDonationDraft(payload: CreateDonationRequestPayload): Promise<void> {
+    const callable = httpsCallable<CreateDonationRequestPayload, { requestId: string }>(
+      this.firebaseClient.functions,
+      'saveDonationDraft',
+      { timeout: 20_000 },
+    );
+    await callable(payload);
+  }
+
   async createContributionSession(
     payload: CreateContributionSessionPayload,
   ): Promise<ContributionSessionResponse> {

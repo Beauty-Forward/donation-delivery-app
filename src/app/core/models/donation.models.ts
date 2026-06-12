@@ -1,6 +1,11 @@
 export type DonationType = 'pickup' | 'shipping' | 'dropoff';
 
 export type DonationStatus =
+  // Pre-payment draft states written by saveDonationDraft as the donor moves
+  // through the wizard, before the Givebutter widget. 'draft' is a partial lead;
+  // 'pending_payment' is a complete pickup awaiting payment. See #138.
+  | 'draft'
+  | 'pending_payment'
   | 'submitted'
   | 'verifying_payment'
   | 'awaiting_payment'

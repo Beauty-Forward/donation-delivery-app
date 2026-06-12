@@ -93,6 +93,24 @@ export const createDonationRequestSchema = z
     // Givebutter's API by donor email + amount within the lookback window.
   });
 
+// Lenient sibling of createDonationRequestSchema for progressive draft saves.
+// The donor + a stable idempotencyKey are required (the doc id and the lead
+// contact); everything else is optional because a draft is written at each
+// wizard step with only the info collected so far. No superRefine: a donor-only
+// draft (no pickup/shipping/dropoff yet) is valid. The method sub-objects are
+// validated by the same schemas when present, so a complete pickup draft still
+// has to be well-formed. See #138.
+export const saveDonationDraftSchema = z.object({
+  donationType: z.enum(['pickup', 'shipping', 'dropoff']),
+  donor: donorSchema,
+  contribution: contributionSchema,
+  pickup: pickupSchema.optional(),
+  shipping: shippingSchema.optional(),
+  dropoff: dropoffSchema.optional(),
+  metadata: z.record(z.unknown()).optional(),
+  idempotencyKey: z.string().min(8).max(200),
+});
+
 export const createContributionSessionSchema = z.object({
   donationType: z.enum(['pickup', 'shipping', 'dropoff']),
   amountUsd: z.number().positive().optional(),

@@ -195,6 +195,10 @@ export class DonationWizardPageComponent {
   protected form: WizardFormState = { ...DEFAULT_WIZARD_FORM_STATE };
   protected gbSessionId: string | null = null;
   protected gbAmountUsd: number | null = null;
+  // Stable per wizard session (generated on the first draft save). Shared by the
+  // progressive draft saves and the final createDonationRequest so they all land
+  // on one donation_requests doc. See #138.
+  protected idempotencyKey: string | null = null;
   // True while createDonationRequest is in flight — drives the Confirm button's
   // disabled/loading state so the donor sees feedback instead of a frozen button.
   protected isSubmitting = false;
@@ -578,6 +582,11 @@ export class DonationWizardPageComponent {
       return;
     }
 
+    // First persistence point: we now have the donor's name, email, and phone.
+    // Capture them as a draft/lead before they go any further so nobody who
+    // reaches this step is dropped. See #138.
+    this.saveDraft();
+
     const next = this.afterDetailsStep;
 
     if (next === 4) {
@@ -605,6 +614,11 @@ export class DonationWizardPageComponent {
     if (!this.validateSchedule()) {
       return;
     }
+
+    // Pickup details (date + time) are now complete — update the draft to a full
+    // 'pending_payment' doc BEFORE the donor reaches the Givebutter widget, so a
+    // payment can be reconciled to it even if they never return. See #138.
+    this.saveDraft();
 
     void this.transitionLocal(5);
   }
@@ -731,7 +745,7 @@ export class DonationWizardPageComponent {
     this.cdr.detectChanges();
   }
 
-  private async persistDonation(): Promise<DonationSubmissionResult | null> {
+  private buildDonationPayload(): CreateDonationRequestPayload | null {
     if (!this.deliveryMethod) {
       return null;
     }
@@ -757,10 +771,11 @@ export class DonationWizardPageComponent {
     // this same object directly to Firestore. So we omit the field entirely when we
     // don't have a value, rather than setting it to undefined.
     const payload: CreateDonationRequestPayload = {
-      // One key per submit attempt. Shared by the callable and the direct-
-      // Firestore fallback so both dispatch attempts collapse to a single Roadie
-      // idempotency_key — no duplicate courier even if the callable times out. #113.
-      idempotencyKey: crypto.randomUUID(),
+      // Stable per wizard session. Shared by the progressive draft saves, the
+      // callable, and the direct-Firestore fallback so they all collapse onto one
+      // donation_requests doc and one Roadie idempotency_key — no duplicate
+      // courier, and the draft promotes into the final order. See #113, #138.
+      idempotencyKey: this.ensureIdempotencyKey(),
       donationType,
       donor: {
         fullName,
@@ -787,13 +802,18 @@ export class DonationWizardPageComponent {
     };
 
     if (donationType === 'pickup') {
-      payload.pickup = {
-        pickupAddress: this.buildDonorAddress(donorCity, donorState),
-        preferredDate: this.selectedDate ?? '',
-        preferredTimeWindow: this.selectedTime ?? '',
-        courierNotes: this.form.courierNotes || undefined,
-        warehouseAddress,
-      };
+      // Attach pickup only once it's complete (schedule chosen). Earlier draft
+      // saves (the donor-details step) have no date/time yet, so the backend keeps
+      // the doc as a 'draft' lead until the pickup details arrive. See #138.
+      if (this.selectedDate && this.selectedTime) {
+        payload.pickup = {
+          pickupAddress: this.buildDonorAddress(donorCity, donorState),
+          preferredDate: this.selectedDate,
+          preferredTimeWindow: this.selectedTime,
+          courierNotes: this.form.courierNotes || undefined,
+          warehouseAddress,
+        };
+      }
     } else if (donationType === 'dropoff') {
       payload.dropoff = {
         // The wizard doesn't ask dropoff donors to schedule a slot — they
@@ -809,6 +829,38 @@ export class DonationWizardPageComponent {
       payload.shipping = {
         senderAddress: this.buildDonorAddress(donorCity, donorState),
       };
+    }
+
+    return payload;
+  }
+
+  // Lazily mint the stable per-session idempotency key and persist it, so a draft
+  // save and the eventual createDonationRequest share one doc id. See #138.
+  private ensureIdempotencyKey(): string {
+    if (!this.idempotencyKey) {
+      this.idempotencyKey = crypto.randomUUID();
+      this.persist();
+    }
+    return this.idempotencyKey;
+  }
+
+  // Fire-and-forget draft capture: persist whatever the donor has entered so far
+  // to a donation_requests draft (orphaned-payment safety net + lead capture).
+  // Never blocks or fails wizard navigation. See #138.
+  private saveDraft(): void {
+    const payload = this.buildDonationPayload();
+    if (!payload) {
+      return;
+    }
+    void this.donationApi
+      .saveDonationDraft(payload)
+      .catch((err) => console.warn('[wizard] saveDonationDraft failed (non-blocking)', err));
+  }
+
+  private async persistDonation(): Promise<DonationSubmissionResult | null> {
+    const payload = this.buildDonationPayload();
+    if (!payload) {
+      return null;
     }
 
     return this.donationApi.createDonationRequest(payload);
@@ -1094,6 +1146,7 @@ export class DonationWizardPageComponent {
     this.consentProducts = state.consentProducts;
     this.consentLiability = state.consentLiability;
     this.deliveryMethod = state.deliveryMethod;
+    this.idempotencyKey = state.idempotencyKey;
     this.form = { ...state.form };
     this.gbSessionId = state.gbSessionId;
     this.gbAmountUsd = state.gbAmountUsd;
@@ -1113,6 +1166,7 @@ export class DonationWizardPageComponent {
       consentProducts: this.consentProducts,
       consentLiability: this.consentLiability,
       deliveryMethod: this.deliveryMethod,
+      idempotencyKey: this.idempotencyKey,
       form: { ...this.form },
       gbSessionId: this.gbSessionId,
       gbAmountUsd: this.gbAmountUsd,
@@ -1131,6 +1185,7 @@ export class DonationWizardPageComponent {
     this.consentProducts = false;
     this.consentLiability = false;
     this.deliveryMethod = null;
+    this.idempotencyKey = null;
     this.form = { ...DEFAULT_WIZARD_FORM_STATE };
     this.gbSessionId = null;
     this.gbAmountUsd = null;
@@ -1212,6 +1267,11 @@ export class DonationWizardPageComponent {
     this.failureReason = null;
     this.isSubmitting = false;
     this.pickupVerificationStarted = false;
+    // Start a fresh attempt: drop the idempotency key so the retry mints a new one
+    // and createDonationRequest creates+verifies a new doc, rather than colliding
+    // with the now-failed doc from the previous attempt (which would short-circuit
+    // and never re-verify the new payment). See #138.
+    this.idempotencyKey = null;
     this.cdr.markForCheck();
     this.persist();
     void this.transitionRoute('/pickup', 5, false);
