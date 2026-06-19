@@ -56,7 +56,3 @@ Thumbs.db
 # HubSpot CLI config — contains a personalAccessKey / OAuth token, never commit
 hubspot.config.yml
 hubspot.config*.yml
-
-# HubSpot CLI project scaffolds (nested, untracked experiments — not part of the app)
-/donation-delivery-app/
-/donation-delivery-app-2/
