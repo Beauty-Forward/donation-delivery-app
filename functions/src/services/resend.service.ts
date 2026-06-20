@@ -1,36 +1,34 @@
 // Thin Resend API client. Sends transactional confirmation emails via the
 // Resend HTTP API. Raw fetch matches the HubspotService / Roadie pattern;
-// the templates themselves live in ../email/templates.
+// the templates themselves live in ../email.
 //
 // Reference: https://resend.com/docs/api-reference/emails/send-email
 
 import {
   buildPickupConfirmationEmail,
-  type PickupConfirmationEmailData
-} from '../email/templates/pickup-confirmation.js';
+  type PickupConfirmationEmailData,
+} from '../email/pickup-confirmation.js';
 import {
   buildShippingConfirmationEmail,
-  type ShippingConfirmationEmailData
-} from '../email/templates/shipping-confirmation.js';
+  type ShippingConfirmationEmailData,
+} from '../email/shipping-confirmation.js';
 import {
   buildDropoffConfirmationEmail,
-  type DropoffConfirmationEmailData
-} from '../email/templates/dropoff-confirmation.js';
+  type DropoffConfirmationEmailData,
+} from '../email/dropoff-confirmation.js';
 import {
   buildDonationRecoveryEmail,
-  type DonationRecoveryEmailData
-} from '../email/templates/donation-recovery.js';
-import {
-  buildStalledPickupEmail,
-  type StalledPickupEmailData
-} from '../email/templates/stalled-pickup.js';
+  type DonationRecoveryEmailData,
+} from '../email/donation-recovery.js';
+import { buildStalledPickupEmail, type StalledPickupEmailData } from '../email/stalled-pickup.js';
 
 export class ResendEmailService {
   constructor(
     private readonly apiKey: string = process.env['RESEND_API_KEY'] ?? '',
-    private readonly fromEmail: string = process.env['RESEND_FROM_EMAIL'] ?? 'onboarding@resend.dev',
+    private readonly fromEmail: string = process.env['RESEND_FROM_EMAIL'] ??
+      'onboarding@resend.dev',
     private readonly baseUrl: string = 'https://api.resend.com',
-    private readonly fetchImpl: typeof fetch = fetch
+    private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
   async sendPickupConfirmationEmail(data: PickupConfirmationEmailData): Promise<void> {
@@ -71,14 +69,14 @@ export class ResendEmailService {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         from: this.fromEmail,
         to: [args.to],
         subject: args.subject,
-        html: args.html
-      })
+        html: args.html,
+      }),
     });
 
     if (!res.ok) {

@@ -1,4 +1,4 @@
-import { DonorInfo, DropoffDetails, DonationStatus } from '../../models.js';
+import { DonorInfo, DropoffDetails, DonationStatus } from '../models.js';
 import {
   wrapInBaseLayout,
   formatAddress,
@@ -20,7 +20,10 @@ export interface DropoffConfirmationEmailData {
   nextSteps: string[];
 }
 
-export function buildDropoffConfirmationEmail(data: DropoffConfirmationEmailData): { subject: string; html: string } {
+export function buildDropoffConfirmationEmail(data: DropoffConfirmationEmailData): {
+  subject: string;
+  html: string;
+} {
   const { donor, requestId, status, dropoff, nextSteps } = data;
 
   let gridRows = gridRowHtml('Request ID', requestId);

@@ -1,4 +1,4 @@
-import { DonorInfo, ShippingDetails, DonationStatus } from '../../models.js';
+import { DonorInfo, ShippingDetails, DonationStatus } from '../models.js';
 import {
   wrapInBaseLayout,
   formatAddress,

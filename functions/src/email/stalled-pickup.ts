@@ -1,10 +1,5 @@
-import { DonorInfo } from '../../models.js';
-import {
-  wrapInBaseLayout,
-  eyebrowHtml,
-  headingHtml,
-  bodyTextHtml,
-} from './base-layout.js';
+import { DonorInfo } from '../models.js';
+import { wrapInBaseLayout, eyebrowHtml, headingHtml, bodyTextHtml } from './base-layout.js';
 
 // The two awaiting_payment situations the confirmation page promises a 24-hour
 // follow-up email for. Kept as a discriminator so the scheduled SLA loop can map

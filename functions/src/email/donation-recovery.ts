@@ -1,4 +1,4 @@
-import { DonorInfo } from '../../models.js';
+import { DonorInfo } from '../models.js';
 import {
   wrapInBaseLayout,
   eyebrowHtml,

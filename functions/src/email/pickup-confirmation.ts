@@ -1,4 +1,4 @@
-import { DonorInfo, PickupDetails, DonationStatus } from '../../models.js';
+import { DonorInfo, PickupDetails, DonationStatus } from '../models.js';
 import {
   wrapInBaseLayout,
   formatAddress,
@@ -21,7 +21,10 @@ export interface PickupConfirmationEmailData {
   nextSteps: string[];
 }
 
-export function buildPickupConfirmationEmail(data: PickupConfirmationEmailData): { subject: string; html: string } {
+export function buildPickupConfirmationEmail(data: PickupConfirmationEmailData): {
+  subject: string;
+  html: string;
+} {
   const { donor, requestId, status, pickup, courierDispatchId, nextSteps } = data;
 
   let gridRows = gridRowHtml('Request ID', requestId);
