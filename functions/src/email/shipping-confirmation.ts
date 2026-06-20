@@ -1,5 +1,6 @@
 import { DonorInfo, ShippingDetails, DonationStatus } from '../models.js';
 import {
+  COLORS,
   wrapInBaseLayout,
   formatAddress,
   eyebrowHtml,
@@ -39,7 +40,7 @@ export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailDa
 
   const notesSection = shipping.packageNotes
     ? `${sectionHeadingHtml('Package Notes')}
-      <p style="margin:0; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:#6b6560; line-height:1.5;">${shipping.packageNotes}</p>`
+      <p style="margin:0; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:${COLORS.textSoft}; line-height:1.5;">${shipping.packageNotes}</p>`
     : '';
 
   const body = `

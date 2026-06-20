@@ -1,5 +1,6 @@
 import { DonorInfo, DropoffDetails, DonationStatus } from '../models.js';
 import {
+  COLORS,
   wrapInBaseLayout,
   formatAddress,
   formatDate,
@@ -38,7 +39,7 @@ export function buildDropoffConfirmationEmail(data: DropoffConfirmationEmailData
 
   const notesSection = dropoff.dropoffNotes
     ? `${sectionHeadingHtml('Drop-off Notes')}
-      <p style="margin:0; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:#6b6560; line-height:1.5;">${dropoff.dropoffNotes}</p>`
+      <p style="margin:0; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:${COLORS.textSoft}; line-height:1.5;">${dropoff.dropoffNotes}</p>`
     : '';
 
   const body = `

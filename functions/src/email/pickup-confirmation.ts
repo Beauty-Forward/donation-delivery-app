@@ -1,5 +1,6 @@
 import { DonorInfo, PickupDetails, DonationStatus } from '../models.js';
 import {
+  COLORS,
   wrapInBaseLayout,
   formatAddress,
   formatDate,
@@ -43,7 +44,7 @@ export function buildPickupConfirmationEmail(data: PickupConfirmationEmailData):
 
   const notesSection = pickup.courierNotes
     ? `${sectionHeadingHtml('Notes for the Courier')}
-      <p style="margin:0; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:#6b6560; line-height:1.5;">${pickup.courierNotes}</p>`
+      <p style="margin:0; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:${COLORS.textSoft}; line-height:1.5;">${pickup.courierNotes}</p>`
     : '';
 
   const body = `
