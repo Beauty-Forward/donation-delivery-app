@@ -151,10 +151,8 @@ async function notifyPickupQueued(
   await sendEmailOnce(requestId, 'confirmationEmailSentAt', () =>
     resendEmailService.sendPickupConfirmationEmail({
       donor,
-      requestId,
       status: 'queued_for_dispatch',
       pickup,
-      courierDispatchId,
       nextSteps: buildNextSteps('pickup'),
     }),
   );

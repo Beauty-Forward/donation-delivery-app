@@ -24,10 +24,7 @@ export function buildDropoffConfirmationEmail(data: DropoffConfirmationEmailData
   subject: string;
   html: string;
 } {
-  const { donor, requestId, status, dropoff, nextSteps } = data;
-
-  let gridRows = gridRowHtml('Request ID', requestId);
-  gridRows += gridRowHtml('Status', status);
+  const { donor, dropoff, nextSteps } = data;
 
   const locationRows = [
     gridRowHtml('Location', dropoff.locationName),
@@ -46,10 +43,6 @@ export function buildDropoffConfirmationEmail(data: DropoffConfirmationEmailData
     ${eyebrowHtml('Drop-off scheduled')}
     ${headingHtml('Your drop-off is confirmed')}
     ${bodyTextHtml(`Hi ${donor.fullName}, thank you for donating with Beauty Forward. Check in with your name at the front desk when you arrive.`)}
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-      ${gridRows}
-    </table>
 
     ${sectionHeadingHtml('Drop-off Details')}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">

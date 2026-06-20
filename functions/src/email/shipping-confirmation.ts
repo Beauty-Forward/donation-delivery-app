@@ -30,11 +30,7 @@ export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailDa
   subject: string;
   html: string;
 } {
-  const { donor, requestId, status, shipping, warehouseAddress, nextSteps } = data;
-
-  let gridRows = gridRowHtml('Request ID', requestId);
-
-  gridRows += gridRowHtml('Status', status);
+  const { donor, shipping, warehouseAddress, nextSteps } = data;
 
   const addressRows = [gridRowHtml('Ship To', formatAddress(warehouseAddress))].join('');
 
@@ -47,10 +43,6 @@ export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailDa
     ${eyebrowHtml('Ship your items')}
     ${headingHtml("You're all set")}
     ${bodyTextHtml(`Hi ${donor.fullName}, thanks for donating! Please ship your items to the warehouse address below. Once you've shipped your items, email us at info@beauty-forward.org with your shipping confirmation number so that we can track delivery.`)}
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-      ${gridRows}
-    </table>
 
     ${sectionHeadingHtml('Shipping Details')}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
