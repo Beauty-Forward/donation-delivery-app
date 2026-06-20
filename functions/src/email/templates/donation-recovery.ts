@@ -25,7 +25,7 @@ export function buildDonationRecoveryEmail(data: DonationRecoveryEmailData): {
 
   const body = `
     ${eyebrowHtml('Still waiting')}
-    ${headingHtml('Want to finish your pickup?')}
+    ${headingHtml('Want to finish scheduling your pickup?')}
     ${bodyTextHtml(
       `Hi ${donor.fullName} — you started a pickup with Beauty Forward and then life got in the way (we get it). Those untouched PR boxes and unused beauty products taking up space at your place? Women in shelters would actually love them.`,
     )}
@@ -34,7 +34,7 @@ export function buildDonationRecoveryEmail(data: DonationRecoveryEmailData): {
   `;
 
   return {
-    subject: 'your pickup is still here ✨',
+    subject: 'Want to finish scheduling your pickup?',
     html: wrapInBaseLayout(body),
   };
 }
