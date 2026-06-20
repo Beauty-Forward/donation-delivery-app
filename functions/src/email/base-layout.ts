@@ -1,3 +1,5 @@
+import type { AddressInfo } from '../models.js';
+
 export function wrapInBaseLayout(bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
@@ -76,13 +78,7 @@ export function wrapInBaseLayout(bodyHtml: string): string {
 </html>`;
 }
 
-export function formatAddress(address: {
-  line1: string;
-  line2?: string;
-  city: string;
-  state: string;
-  postalCode: string;
-}): string {
+export function formatAddress(address: AddressInfo): string {
   const line2 = address.line2 ? `${address.line2}, ` : '';
   return `${address.line1}, ${line2}${address.city}, ${address.state} ${address.postalCode}`;
 }
