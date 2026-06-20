@@ -1,12 +1,5 @@
 import type { AddressInfo } from '../models.js';
 
-// Brand palette for transactional emails. Values mirror the Angular app's
-// semantic CSS custom properties in
-// src/app/features/wizard/donation-wizard-page.component.scss so app + email
-// share one vocabulary. NOTE: these interpolate to literal inline hex in the
-// rendered HTML on purpose — email clients (Outlook, Gmail) do not support CSS
-// custom properties or reliably honor <style> blocks, so `var(--x)` cannot be
-// used in the output. The constant lives in the source only.
 export const COLORS = {
   textMain: '#181000', // body text, grid values, MSO logo fallback
   textSoft: '#6b6560', // eyebrows, labels, footer, list items, notes
