@@ -67,7 +67,7 @@ export function wrapInBaseLayout(bodyHtml: string): string {
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td style="font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:13px; color:${COLORS.textSoft}; line-height:1.6; text-align:center;">
-                    Questions? Reply to this email or reach us at
+                    Questions? Email us at
                     <a href="mailto:info@beauty-forward.org" style="color:${COLORS.heading}; text-decoration:none;">info@beauty-forward.org</a>
                   </td>
                 </tr>

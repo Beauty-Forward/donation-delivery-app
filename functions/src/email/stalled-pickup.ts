@@ -1,5 +1,6 @@
 import { DonorInfo } from '../models.js';
 import { wrapInBaseLayout, eyebrowHtml, headingHtml, bodyTextHtml } from './base-layout.js';
+import { COLORS } from './base-layout.js';
 
 // The two awaiting_payment situations the confirmation page promises a 24-hour
 // follow-up email for. Kept as a discriminator so the scheduled SLA loop can map
@@ -39,7 +40,7 @@ export function buildStalledPickupEmail(data: StalledPickupEmailData): {
         `Hi ${donor.fullName} — ${amountLine}We hit a snag booking the courier automatically, so our team is setting up your pickup by hand. We’ll email you to confirm your pickup window shortly.`,
       )}
       ${bodyTextHtml(
-        `There’s nothing you need to do, and there’s no need to donate again. If you have any questions in the meantime, just reply to this email.`,
+        `There’s nothing you need to do, and there’s no need to donate again. If you have any questions in the meantime, email us at <a href="mailto: info@beauty-forward.org" style="color:${COLORS.heading};">info@beauty-forward.org</a>.`,
       )}
     `;
 
@@ -57,7 +58,7 @@ export function buildStalledPickupEmail(data: StalledPickupEmailData): {
       `Hi ${donor.fullName} — thanks for starting a pickup with Beauty Forward. We’re finishing confirming your payment on our end. As soon as it’s confirmed, we’ll email you to lock in your pickup window.`,
     )}
     ${bodyTextHtml(
-      `Please don’t start over or donate again — if we need anything from you, we’ll reach out right here. Questions? Just reply to this email.`,
+      `Please don’t start over or donate again — if we need anything from you, we’ll reach out right here. Questions? Email us at <a href="mailto: info@beauty-forward.org" style="color:${COLORS.heading};">info@beauty-forward.org</a>.`,
     )}
   `;
 
