@@ -66,7 +66,7 @@ functions/src/
 ├── validators.ts         # Zod schemas for inbound payloads
 ├── dispatch-routing.ts   # routing guard for the verify+dispatch trigger
 ├── firestore-utils.ts
-├── constants/warehouse.ts
+├── warehouse.ts
 ├── providers/            # courier-provider.ts (interface), roadie-provider.ts (real),
 │                         #   mock-roadie-provider.ts (fallback)
 ├── services/             # givebutter, hubspot, resend, dispatch
@@ -129,13 +129,13 @@ Functions callables and their Zod validators; direct client `create` is a fallba
 
 All in `functions/src/index.ts`, region `us-central1`, codebase `donor`:
 
-| Function | Trigger | Purpose |
-| --- | --- | --- |
-| `createDonationRequest` | `onCall` | Validates payload, writes `donation_requests` + the type-specific doc, generates a drop-off reference for drop-offs, and (for pickups) verifies the Givebutter contribution and dispatches Roadie synchronously. Marks shipping requests `awaiting_shipment`. |
-| `createContributionSession` | `onCall` | Returns a Givebutter checkout URL for the pickup contribution flow. |
-| `verifyContributionAndDispatch` | `onDocumentCreated` | Backstop: re-verifies the contribution and dispatches the courier if the synchronous path didn't resolve. |
-| `handleGivebutterWebhook` | `onRequest` | Recovery path for contribution status updates. ⚠️ Signature verification is not yet implemented. |
-| `lookupDonationByReference` | `onCall` | Looks up a donation by its drop-off reference code. |
+| Function                        | Trigger             | Purpose                                                                                                                                                                                                                                                       |
+| ------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createDonationRequest`         | `onCall`            | Validates payload, writes `donation_requests` + the type-specific doc, generates a drop-off reference for drop-offs, and (for pickups) verifies the Givebutter contribution and dispatches Roadie synchronously. Marks shipping requests `awaiting_shipment`. |
+| `createContributionSession`     | `onCall`            | Returns a Givebutter checkout URL for the pickup contribution flow.                                                                                                                                                                                           |
+| `verifyContributionAndDispatch` | `onDocumentCreated` | Backstop: re-verifies the contribution and dispatches the courier if the synchronous path didn't resolve.                                                                                                                                                     |
+| `handleGivebutterWebhook`       | `onRequest`         | Recovery path for contribution status updates. ⚠️ Signature verification is not yet implemented.                                                                                                                                                              |
+| `lookupDonationByReference`     | `onCall`            | Looks up a donation by its drop-off reference code.                                                                                                                                                                                                           |
 
 ## Integrations
 

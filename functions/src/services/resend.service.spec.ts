@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ResendEmailService } from './resend.service.js';
-import { WAREHOUSE_ADDRESS } from '../constants/warehouse.js';
+import { WAREHOUSE_ADDRESS } from '../warehouse.js';
 import type { DonorInfo, PickupDetails, ShippingDetails, DropoffDetails } from '../models.js';
 
 type FetchArgs = Parameters<typeof fetch>;
@@ -146,7 +146,7 @@ describe('ResendEmailService', () => {
     });
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
-    expect(body.subject).toMatch(/shipping/i);
+    expect(body.subject).toMatch(/donation is confirmed/i);
     expect(body.html).toContain('14 53rd St');
     expect(body.html).toContain('Brooklyn');
   });
@@ -166,7 +166,7 @@ describe('ResendEmailService', () => {
     });
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
-    expect(body.subject).toMatch(/pickup is still here/i);
+    expect(body.subject).toMatch(/finish.*pickup/i);
     expect(body.to).toEqual(['jane@example.com']);
     // Abandoned-cart framing: addresses the donor warmly and reminds them of the action.
     expect(body.html).toContain('Jane Rivera');
