@@ -3,7 +3,6 @@ import {
   wrapInBaseLayout,
   formatAddress,
   formatDate,
-  statusDotHtml,
   eyebrowHtml,
   headingHtml,
   bodyTextHtml,
@@ -48,7 +47,6 @@ export function buildPickupConfirmationEmail(data: PickupConfirmationEmailData):
     : '';
 
   const body = `
-    ${statusDotHtml()}
     ${eyebrowHtml('Pickup submitted')}
     ${headingHtml('Your pickup request is confirmed')}
     ${bodyTextHtml(`Hi ${donor.fullName}, thank you for donating with Beauty Forward. We\u2019ll follow up by email and text with courier timing.`)}

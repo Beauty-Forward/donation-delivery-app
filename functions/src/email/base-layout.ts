@@ -93,10 +93,6 @@ export function formatDate(isoDate: string): string {
   });
 }
 
-export function statusDotHtml(): string {
-  return `<div style="width:10px; height:10px; border-radius:50%; background-color:#295018; margin-bottom:12px;"></div>`;
-}
-
 export function eyebrowHtml(text: string): string {
   return `<p style="margin:0 0 4px 0; font-family:'Alte Haas Grotesk', Arial, Helvetica, sans-serif; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#6b6560;">${text}</p>`;
 }

@@ -3,7 +3,6 @@ import {
   wrapInBaseLayout,
   formatAddress,
   formatDate,
-  statusDotHtml,
   eyebrowHtml,
   headingHtml,
   bodyTextHtml,
@@ -43,7 +42,6 @@ export function buildDropoffConfirmationEmail(data: DropoffConfirmationEmailData
     : '';
 
   const body = `
-    ${statusDotHtml()}
     ${eyebrowHtml('Drop-off scheduled')}
     ${headingHtml('Your drop-off is confirmed')}
     ${bodyTextHtml(`Hi ${donor.fullName}, thank you for donating with Beauty Forward. Check in with your name at the front desk when you arrive.`)}
