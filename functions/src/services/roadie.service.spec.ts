@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RoadieCourierProvider, buildShipmentPayload, buildTimeWindow } from './roadie-provider.js';
-import type { CourierDispatchInput } from './courier-provider.js';
+import { RoadieCourierService, buildShipmentPayload, buildTimeWindow } from './roadie.service.js';
+import type { CourierDispatchInput } from '../models.js';
 
 type FetchArgs = Parameters<typeof fetch>;
 
@@ -55,10 +55,10 @@ const farFutureInput: CourierDispatchInput = {
   },
 };
 
-describe('RoadieCourierProvider', () => {
+describe('RoadieCourierService', () => {
   it('throws when ROADIE_API_KEY is not configured', async () => {
     const { fn } = makeFetchMock([]);
-    const provider = new RoadieCourierProvider(
+    const service = new RoadieCourierService(
       '',
       'https://sandbox.roadie.test/v1',
       5000,
@@ -66,7 +66,7 @@ describe('RoadieCourierProvider', () => {
       '5550000000',
       fn,
     );
-    await expect(provider.dispatchPickup(farFutureInput)).rejects.toThrow(
+    await expect(service.dispatchPickup(farFutureInput)).rejects.toThrow(
       /ROADIE_API_KEY not configured/,
     );
     expect(fn).not.toHaveBeenCalled();
@@ -76,7 +76,7 @@ describe('RoadieCourierProvider', () => {
     const { fn, calls } = makeFetchMock([
       { status: 201, body: { id: 'roadie_dlv_99', status: 'created' } },
     ]);
-    const provider = new RoadieCourierProvider(
+    const service = new RoadieCourierService(
       'sk_test_123',
       'https://sandbox.roadie.test/v1',
       5000,
@@ -85,7 +85,7 @@ describe('RoadieCourierProvider', () => {
       fn,
     );
 
-    const result = await provider.dispatchPickup(farFutureInput);
+    const result = await service.dispatchPickup(farFutureInput);
 
     expect(fn).toHaveBeenCalledTimes(1);
     const [url, init] = calls[0]!;
@@ -97,7 +97,7 @@ describe('RoadieCourierProvider', () => {
       'Content-Type': 'application/json',
     });
     expect(result).toEqual({
-      provider: 'roadie',
+      service: 'roadie',
       dispatchId: 'roadie_dlv_99',
       status: 'queued',
       etaWindow: expect.any(String),
@@ -106,7 +106,7 @@ describe('RoadieCourierProvider', () => {
 
   it('maps donor + pickup details into the Roadie request body', async () => {
     const { fn, calls } = makeFetchMock([{ status: 201, body: { id: 1, status: 'created' } }]);
-    const provider = new RoadieCourierProvider(
+    const service = new RoadieCourierService(
       'sk_test',
       'https://sandbox.roadie.test/v1',
       5000,
@@ -115,14 +115,12 @@ describe('RoadieCourierProvider', () => {
       fn,
     );
 
-    await provider.dispatchPickup(farFutureInput);
+    await service.dispatchPickup(farFutureInput);
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
     expect(body.reference_id).toBe('req_abc123');
     expect(body.description).toBe('Beauty Forward donation pickup');
-    expect(body.items).toMatchObject([
-      { description: 'Beauty product donation', quantity: 1 },
-    ]);
+    expect(body.items).toMatchObject([{ description: 'Beauty product donation', quantity: 1 }]);
     expect(body.pickup_location.address).toEqual({
       street1: '123 Main St',
       street2: 'Apt 4',
@@ -159,7 +157,7 @@ describe('RoadieCourierProvider', () => {
 
   it('populates delivery_location.notes from warehouseAddress.instructions', async () => {
     const { fn, calls } = makeFetchMock([{ status: 201, body: { id: 'd1', status: 'created' } }]);
-    const provider = new RoadieCourierProvider(
+    const service = new RoadieCourierService(
       'sk_test',
       'https://sandbox.roadie.test/v1',
       5000,
@@ -168,7 +166,7 @@ describe('RoadieCourierProvider', () => {
       fn,
     );
 
-    await provider.dispatchPickup({
+    await service.dispatchPickup({
       ...farFutureInput,
       pickup: {
         ...farFutureInput.pickup,
@@ -185,22 +183,15 @@ describe('RoadieCourierProvider', () => {
 
   it('returns status=assigned when Roadie says the delivery is assigned', async () => {
     const { fn } = makeFetchMock([{ status: 200, body: { id: 'd1', status: 'assigned' } }]);
-    const provider = new RoadieCourierProvider(
-      'k',
-      'https://s.test/v1',
-      5000,
-      'W',
-      '5550000000',
-      fn,
-    );
+    const service = new RoadieCourierService('k', 'https://s.test/v1', 5000, 'W', '5550000000', fn);
 
-    const r = await provider.dispatchPickup(farFutureInput);
+    const r = await service.dispatchPickup(farFutureInput);
     expect(r.status).toBe('assigned');
   });
 
   it('throws with response body when Roadie returns non-2xx', async () => {
     const { fn } = makeFetchMock([{ status: 401, body: { error: 'unauthorized' } }]);
-    const provider = new RoadieCourierProvider(
+    const service = new RoadieCourierService(
       'bad',
       'https://s.test/v1',
       5000,
@@ -209,41 +200,27 @@ describe('RoadieCourierProvider', () => {
       fn,
     );
 
-    await expect(provider.dispatchPickup(farFutureInput)).rejects.toThrow(
+    await expect(service.dispatchPickup(farFutureInput)).rejects.toThrow(
       /Roadie create-shipment failed: 401/,
     );
   });
 
   it('throws when Roadie 2xx response has no id', async () => {
     const { fn } = makeFetchMock([{ status: 200, body: { status: 'created' } }]);
-    const provider = new RoadieCourierProvider(
-      'k',
-      'https://s.test/v1',
-      5000,
-      'W',
-      '5550000000',
-      fn,
-    );
+    const service = new RoadieCourierService('k', 'https://s.test/v1', 5000, 'W', '5550000000', fn);
 
-    await expect(provider.dispatchPickup(farFutureInput)).rejects.toThrow(/missing shipment id/);
+    await expect(service.dispatchPickup(farFutureInput)).rejects.toThrow(/missing shipment id/);
   });
 
   it('treats a 409 (duplicate idempotency_key) as already dispatched, not a failure', async () => {
     const { fn } = makeFetchMock([{ status: 409, body: { error: 'duplicate idempotency_key' } }]);
-    const provider = new RoadieCourierProvider(
-      'k',
-      'https://s.test/v1',
-      5000,
-      'W',
-      '5550000000',
-      fn,
-    );
+    const service = new RoadieCourierService('k', 'https://s.test/v1', 5000, 'W', '5550000000', fn);
 
     // Must NOT throw — a second dispatch for the same donation is a no-op.
-    const result = await provider.dispatchPickup(farFutureInput);
+    const result = await service.dispatchPickup(farFutureInput);
     // Empty dispatchId so the caller's `courierDispatchId ? ...` guard preserves
     // the id recorded by the first (200) dispatch.
-    expect(result).toEqual({ provider: 'roadie', dispatchId: '', status: 'queued', etaWindow: '' });
+    expect(result).toEqual({ service: 'roadie', dispatchId: '', status: 'queued', etaWindow: '' });
   });
 
   it('sends idempotency_key: the input key when present, else the requestId', async () => {
@@ -251,13 +228,17 @@ describe('RoadieCourierProvider', () => {
       { status: 201, body: { id: 'a', status: 'created' } },
       { status: 201, body: { id: 'b', status: 'created' } },
     ]);
-    const provider = new RoadieCourierProvider('k', 'https://s.test/v1', 5000, 'W', '5550000000', fn);
+    const service = new RoadieCourierService('k', 'https://s.test/v1', 5000, 'W', '5550000000', fn);
 
-    await provider.dispatchPickup({ ...farFutureInput, idempotencyKey: 'idem_xyz' });
-    await provider.dispatchPickup(farFutureInput); // no idempotencyKey
+    await service.dispatchPickup({ ...farFutureInput, idempotencyKey: 'idem_xyz' });
+    await service.dispatchPickup(farFutureInput); // no idempotencyKey
 
-    expect(JSON.parse((calls[0]![1] as RequestInit).body as string).idempotency_key).toBe('idem_xyz');
-    expect(JSON.parse((calls[1]![1] as RequestInit).body as string).idempotency_key).toBe('req_abc123');
+    expect(JSON.parse((calls[0]![1] as RequestInit).body as string).idempotency_key).toBe(
+      'idem_xyz',
+    );
+    expect(JSON.parse((calls[1]![1] as RequestInit).body as string).idempotency_key).toBe(
+      'req_abc123',
+    );
   });
 });
 

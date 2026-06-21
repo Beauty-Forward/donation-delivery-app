@@ -133,7 +133,7 @@ export class RoadieCourierService implements CourierDispatchService {
         console.warn('[roadie] duplicate shipment (409); treating as already dispatched', {
           requestId: input.requestId,
         });
-        return { provider: 'roadie', dispatchId: '', status: 'queued', etaWindow: '' };
+        return { service: 'roadie', dispatchId: '', status: 'queued', etaWindow: '' };
       }
       if (!res.ok) {
         throw new Error(
@@ -148,7 +148,7 @@ export class RoadieCourierService implements CourierDispatchService {
       }
 
       return {
-        provider: 'roadie',
+        service: 'roadie',
         dispatchId,
         status: parsed.status === 'assigned' ? 'assigned' : 'queued',
         etaWindow: formatEtaWindow(parsed, input.pickup),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isForwardCourierTransition, roadieEventToStatus } from './roadie-provider.js';
+import { isForwardCourierTransition, roadieEventToStatus } from './roadie.service.js';
 
 describe('roadieEventToStatus', () => {
   it('maps the happy-path lifecycle events to advancing statuses', () => {

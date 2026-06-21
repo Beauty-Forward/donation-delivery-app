@@ -113,7 +113,7 @@ export interface CourierDispatchInput {
 }
 
 export interface CourierDispatchResult {
-  provider: 'roadie';
+  service: 'roadie';
   dispatchId: string;
   status: 'queued' | 'assigned';
   etaWindow: string;
