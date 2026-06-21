@@ -52,7 +52,7 @@ export function buildStalledPickupEmail(data: StalledPickupEmailData): {
 
   // payment_pending
   const body = `
-    ${eyebrowHtml('Confirming your donation')}
+    ${eyebrowHtml('Confirming your payment')}
     ${headingHtml('We’re still confirming your payment')}
     ${bodyTextHtml(
       `Hi ${donor.fullName} — thanks for starting a pickup with Beauty Forward. We’re finishing confirming your payment on our end. As soon as it’s confirmed, we’ll email you to lock in your pickup window.`,

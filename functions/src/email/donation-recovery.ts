@@ -1,11 +1,5 @@
 import { DonorInfo } from '../models.js';
-import {
-  wrapInBaseLayout,
-  eyebrowHtml,
-  headingHtml,
-  bodyTextHtml,
-  ctaButtonHtml,
-} from './base-layout.js';
+import { wrapInBaseLayout, headingHtml, bodyTextHtml, ctaButtonHtml } from './base-layout.js';
 
 export interface DonationRecoveryEmailData {
   donor: DonorInfo;
@@ -24,7 +18,6 @@ export function buildDonationRecoveryEmail(data: DonationRecoveryEmailData): {
   const { donor, ctaUrl = DEFAULT_CTA_URL } = data;
 
   const body = `
-    ${eyebrowHtml('Still waiting')}
     ${headingHtml('Want to finish scheduling your pickup?')}
     ${bodyTextHtml(
       `Hi ${donor.fullName} — you started a pickup with Beauty Forward and then life got in the way (we get it). Those untouched PR boxes and unused beauty products taking up space at your place? Women in shelters would actually love them.`,

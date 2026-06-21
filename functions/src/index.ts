@@ -964,7 +964,7 @@ function buildNextSteps(type: CreateDonationRequestPayload['donationType']): str
   if (type === 'shipping') {
     return [
       'Ship your items to the warehouse address shown above.',
-      'After shipping, save your receipt so we can trace delivery if needed.',
+      'After shipping, email us your tracking number so that we can track delivery.',
     ];
   }
 

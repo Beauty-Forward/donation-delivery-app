@@ -42,7 +42,7 @@ export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailDa
   const body = `
     ${eyebrowHtml('Ship your items')}
     ${headingHtml("You're all set")}
-    ${bodyTextHtml(`Hi ${donor.fullName}, thanks for donating! Please ship your items to the warehouse address below. Once you've shipped your items, email us at info@beauty-forward.org with your shipping confirmation number so that we can track delivery.`)}
+    ${bodyTextHtml(`Hi ${donor.fullName}, thanks for donating! Please ship your items to the warehouse address below. Once you've shipped your items, email us at <a href="mailto:info@beauty-forward.org" style="color:${COLORS.heading};">info@beauty-forward.org</a> with your shipping confirmation number so that we can track delivery.`)}
 
     ${sectionHeadingHtml('Shipping Details')}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
