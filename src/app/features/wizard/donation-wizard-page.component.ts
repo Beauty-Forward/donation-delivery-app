@@ -154,8 +154,7 @@ export class DonationWizardPageComponent {
     {
       id: 'dropoff',
       title: 'Drop Off',
-      description:
-        'Bring your donation to our Brooklyn warehouse during business hours. Available Tuesdays and Thursdays. Free.',
+      description: 'Bring your donation to our Brooklyn warehouse during business hours. Free.',
     },
     {
       id: 'ship',
@@ -165,9 +164,9 @@ export class DonationWizardPageComponent {
   ];
   protected readonly dropoffArrivalSteps: StepLineItem[] = [
     { number: '01', text: 'Head to the drop-off desk inside the warehouse entrance' },
-    { number: '02', text: "You'll be given a QR code label to attach to your package" },
-    { number: '03', text: 'Scan the QR code at the desk and fill in your details' },
-    { number: '04', text: "Leave your package with our team - that's it!" },
+    { number: '02', text: 'Tell them you are dropping off a package for Beauty Forward' },
+    { number: '03', text: 'Leave the package with them' },
+    { number: '04', text: 'Your items will be redistributed to people who need them!' },
   ];
   protected readonly shippingHowItWorksSteps: StepLineItem[] = [
     { number: '01', text: 'Pack your beauty products securely in a box or padded mailer' },
@@ -415,7 +414,6 @@ export class DonationWizardPageComponent {
           ],
         },
         { label: 'Donating from', lines: [`${this.form.city}, ${this.form.state}`] },
-        { label: 'Dropoff Notes', lines: [this.form.dropoffNotes] },
       );
     }
 
@@ -584,10 +582,6 @@ export class DonationWizardPageComponent {
 
   protected continueFromDetails(): void {
     if (!this.validateInfo()) {
-      return;
-    }
-
-    if (!this.validateDropoffTime()) {
       return;
     }
 
@@ -809,14 +803,8 @@ export class DonationWizardPageComponent {
       };
     } else if (donationType === 'dropoff') {
       payload.dropoff = {
-        // The wizard doesn't ask dropoff donors to schedule a slot — they
-        // walk in during business hours, so use today's date and a
-        // "flexible" window.
-        preferredDate: new Date().toISOString().slice(0, 10),
-        preferredTimeWindow: 'flexible',
         locationName: this.warehouseConfig.destination.name,
         locationAddress: warehouseAddress,
-        dropoffNotes: this.form.dropoffNotes || undefined,
       };
     } else {
       payload.shipping = {
@@ -1033,21 +1021,6 @@ export class DonationWizardPageComponent {
     // within the 2-second confirmation window.
     this.errors = {};
     return true;
-  }
-
-  private validateDropoffTime(): boolean {
-    if (this.deliveryMethod !== 'dropoff') {
-      return true;
-    }
-
-    const errors: Record<string, string> = {};
-
-    if (!this.form.dropoffNotes.trim()) {
-      errors['dropoffNotes'] = 'Tell us when you plan to come';
-    }
-
-    this.errors = errors;
-    return Object.keys(errors).length === 0;
   }
 
   private validateSchedule(): boolean {

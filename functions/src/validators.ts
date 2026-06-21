@@ -46,9 +46,6 @@ const shippingSchema = z.object({
 });
 
 const dropoffSchema = z.object({
-  preferredDate: z.string().min(4),
-  preferredTimeWindow: z.string().min(4),
-  dropoffNotes: z.string().optional(),
   locationName: z.string().min(2),
   locationAddress: addressSchema,
 });

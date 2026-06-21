@@ -59,8 +59,6 @@ const SHIPPING: ShippingDetails = {
 };
 
 const DROPOFF: DropoffDetails = {
-  preferredDate: '2026-06-02',
-  preferredTimeWindow: '1 PM – 5 PM',
   locationName: 'Beauty Forward Warehouse',
   locationAddress: WAREHOUSE_ADDRESS,
 };
@@ -78,10 +76,8 @@ describe('ResendEmailService', () => {
 
     await service.sendPickupConfirmationEmail({
       donor: DONOR,
-      requestId: 'req_1',
       status: 'queued_for_dispatch',
       pickup: PICKUP,
-      courierDispatchId: 'roadie_abc',
       nextSteps: ['step 1'],
     });
 
@@ -101,10 +97,8 @@ describe('ResendEmailService', () => {
 
     await service.sendPickupConfirmationEmail({
       donor: DONOR,
-      requestId: 'req_pickup',
       status: 'queued_for_dispatch',
       pickup: PICKUP,
-      courierDispatchId: 'roadie_xyz',
       nextSteps: ['Keep your donation accessible.'],
     });
 
@@ -123,7 +117,6 @@ describe('ResendEmailService', () => {
     expect(body.from).toBe('onboarding@resend.dev');
     expect(body.to).toEqual(['jane@example.com']);
     expect(body.subject).toMatch(/pickup/i);
-    expect(body.html).toContain('roadie_xyz');
     expect(body.html).toContain('123 Main St');
   });
 
@@ -230,7 +223,6 @@ describe('ResendEmailService', () => {
     await expect(
       service.sendPickupConfirmationEmail({
         donor: DONOR,
-        requestId: 'req_err',
         status: 'queued_for_dispatch',
         pickup: PICKUP,
         nextSteps: [],

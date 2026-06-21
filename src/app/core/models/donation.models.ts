@@ -60,9 +60,6 @@ export interface ShippingDetails {
 }
 
 export interface DropoffDetails {
-  preferredDate: string;
-  preferredTimeWindow: string;
-  dropoffNotes?: string;
   locationName: string;
   locationAddress: AddressInfo;
 }
@@ -80,9 +77,6 @@ export interface PickupFlowDraft {
 
 export interface DropoffFlowDraft {
   donor: DonorInfo;
-  preferredDate: string;
-  preferredTimeWindow: string;
-  dropoffNotes?: string;
   contributionAmountUsd?: number;
   contributionCheckoutStarted?: boolean;
   contributionCheckoutUrl?: string;

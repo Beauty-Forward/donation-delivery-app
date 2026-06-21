@@ -14,7 +14,6 @@ export interface WizardFormState {
   state: string;
   zip: string;
   courierNotes: string;
-  dropoffNotes: string;
 }
 
 export type ConfirmationView = 'verifying' | 'success' | 'failed';
@@ -68,7 +67,6 @@ export const DEFAULT_WIZARD_FORM_STATE: WizardFormState = {
   state: '',
   zip: '',
   courierNotes: '',
-  dropoffNotes: '',
 };
 
 export const DEFAULT_DONATION_WIZARD_STATE: DonationWizardState = {

@@ -106,7 +106,7 @@ Every route loads the wizard component; `data.mode` tells it which step to rende
   },
   pickup?:   { pickupAddress, preferredDate, preferredTimeWindow, courierNotes?, warehouseAddress },
   shipping?: { senderAddress, packageNotes? },
-  dropoff?:  { preferredDate, preferredTimeWindow, dropoffNotes?, locationName, locationAddress, referenceCode? },
+  dropoff?:  { locationName, locationAddress },
   status: DonationStatus,
   createdAt, updatedAt, metadata
 }

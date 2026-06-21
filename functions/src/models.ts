@@ -59,9 +59,6 @@ export interface ShippingDetails {
 }
 
 export interface DropoffDetails {
-  preferredDate: string;
-  preferredTimeWindow: string;
-  dropoffNotes?: string;
   locationName: string;
   locationAddress: AddressInfo;
 }
