@@ -71,7 +71,7 @@ interface RoadieShipmentResponse {
   deliver_between?: { start?: string; end?: string };
 }
 
-export class RoadieCourierProvider implements CourierDispatchService {
+export class RoadieCourierService implements CourierDispatchService {
   private readonly apiKey: string;
   private readonly apiBaseUrl: string;
   private readonly dispatchTimeoutMs: number;

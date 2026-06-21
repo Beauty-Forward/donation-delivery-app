@@ -43,10 +43,10 @@ import {
   PickupDetails,
 } from './models.js';
 import {
-  RoadieCourierProvider,
+  RoadieCourierService,
   isForwardCourierTransition,
   roadieEventToStatus,
-} from './providers/roadie-provider.js';
+} from './services/roadie.service.js';
 import type { CourierDispatchService } from './services/courier.service.js';
 import { GivebutterService } from './services/givebutter.service.js';
 import { HubspotService } from './services/hubspot.service.js';
@@ -82,11 +82,11 @@ let _courierProvider: CourierDispatchService | undefined;
 function getCourierProvider(): CourierDispatchService {
   if (_courierProvider) return _courierProvider;
   if (process.env['ROADIE_API_KEY']) {
-    _courierProvider = new RoadieCourierProvider();
+    _courierProvider = new RoadieCourierService();
   } else {
     throw new Error('No courier api key found');
   }
-  console.info(`[courier] Using 'RoadieCourierProvider'`);
+  console.info(`[courier] Using 'RoadieCourierService'`);
   return _courierProvider;
 }
 const givebutterService = new GivebutterService();
