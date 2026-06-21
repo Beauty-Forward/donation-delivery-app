@@ -1,5 +1,5 @@
 import type { DonorInfo, PickupDetails } from '../models.js';
-import type { CourierDispatchProvider } from '../providers/courier-provider.js';
+import type { CourierDispatchService } from './courier.service.js';
 import { GivebutterService, type VerificationMatchType } from './givebutter.service.js';
 import { getPickupDonationMinUsd } from '../validators.js';
 
@@ -19,7 +19,7 @@ export interface VerifyAndDispatchResult {
 // inspecting the returned result.
 export interface VerifyAndDispatchDeps {
   givebutterService: GivebutterService;
-  courierProvider: CourierDispatchProvider;
+  courierProvider: CourierDispatchService;
 }
 
 // Pure verification + dispatch. Caller owns persistence — this lets
@@ -34,7 +34,7 @@ export async function verifyAndDispatchPickup(
   // Shared across the callable and the fallback for one donation; forwarded to
   // Roadie as idempotency_key so a duplicate dispatch can't book a second
   // courier. See #113.
-  idempotencyKey?: string
+  idempotencyKey?: string,
 ): Promise<VerifyAndDispatchResult> {
   // Dev escape hatch — auto-verify so the team can exercise dispatch without
   // paying through the live widget. Never set in prod.
@@ -51,7 +51,7 @@ export async function verifyAndDispatchPickup(
         status: 'queued_for_dispatch',
         courierDispatchId: dispatch.dispatchId,
         verifiedAmountUsd: getPickupDonationMinUsd(),
-        verificationTransactionId: 'dev_skip_verification'
+        verificationTransactionId: 'dev_skip_verification',
       };
     } catch (err) {
       console.error('Dev-skip dispatch failed', { requestId, err });
@@ -69,7 +69,7 @@ export async function verifyAndDispatchPickup(
     donor.email,
     donor.fullName,
     getPickupDonationMinUsd(),
-    lookbackMinutes
+    lookbackMinutes,
   );
 
   if (verification.kind === 'verified') {
@@ -85,7 +85,7 @@ export async function verifyAndDispatchPickup(
         courierDispatchId: dispatch.dispatchId,
         verifiedAmountUsd: verification.amountUsd,
         verificationTransactionId: verification.transactionId,
-        verificationMatchType: verification.matchType
+        verificationMatchType: verification.matchType,
       };
     } catch (err) {
       // Payment is verified but Roadie failed. Leave room for webhook recovery
@@ -96,7 +96,7 @@ export async function verifyAndDispatchPickup(
         verifiedAmountUsd: verification.amountUsd,
         verificationTransactionId: verification.transactionId,
         verificationMatchType: verification.matchType,
-        failureReason: 'courier_dispatch_failed'
+        failureReason: 'courier_dispatch_failed',
       };
     }
   }
@@ -106,7 +106,7 @@ export async function verifyAndDispatchPickup(
     // (writing the doc, sending the recovery email via sendEmailOnce).
     return {
       status: 'payment_verification_failed',
-      failureReason: verification.reason
+      failureReason: verification.reason,
     };
   }
 
@@ -114,7 +114,7 @@ export async function verifyAndDispatchPickup(
   // the donor; drop to awaiting_payment so handleGivebutterWebhook can rescue.
   console.warn('Givebutter verification errored; falling back to webhook recovery', {
     requestId,
-    reason: verification.reason
+    reason: verification.reason,
   });
   return { status: 'awaiting_payment', failureReason: verification.reason };
 }

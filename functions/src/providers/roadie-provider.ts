@@ -5,7 +5,7 @@ import {
   DonationStatus,
   PickupDetails,
 } from '../models.js';
-import { CourierDispatchProvider } from './courier-provider.js';
+import { CourierDispatchService } from '../services/courier.service.js';
 
 // Maps an inbound Roadie webhook `event` string to the donation status it should
 // advance the doc to, or null for events we receive but don't act on (e.g.
@@ -71,7 +71,7 @@ interface RoadieShipmentResponse {
   deliver_between?: { start?: string; end?: string };
 }
 
-export class RoadieCourierProvider implements CourierDispatchProvider {
+export class RoadieCourierProvider implements CourierDispatchService {
   private readonly apiKey: string;
   private readonly apiBaseUrl: string;
   private readonly dispatchTimeoutMs: number;

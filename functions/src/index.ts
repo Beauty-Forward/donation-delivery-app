@@ -47,7 +47,7 @@ import {
   isForwardCourierTransition,
   roadieEventToStatus,
 } from './providers/roadie-provider.js';
-import type { CourierDispatchProvider } from './providers/courier-provider.js';
+import type { CourierDispatchService } from './services/courier.service.js';
 import { GivebutterService } from './services/givebutter.service.js';
 import { HubspotService } from './services/hubspot.service.js';
 import { ResendEmailService } from './services/resend.service.js';
@@ -78,8 +78,8 @@ const roadieApiKey = defineSecret('ROADIE_API_KEY');
 // request whose header doesn't match. Locally it comes from .env.local. See #107.
 const roadieWebhookToken = defineSecret('ROADIE_WEBHOOK_TOKEN');
 
-let _courierProvider: CourierDispatchProvider | undefined;
-function getCourierProvider(): CourierDispatchProvider {
+let _courierProvider: CourierDispatchService | undefined;
+function getCourierProvider(): CourierDispatchService {
   if (_courierProvider) return _courierProvider;
   if (process.env['ROADIE_API_KEY']) {
     _courierProvider = new RoadieCourierProvider();
