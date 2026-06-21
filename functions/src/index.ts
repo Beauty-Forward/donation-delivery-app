@@ -970,6 +970,6 @@ function buildNextSteps(type: CreateDonationRequestPayload['donationType']): str
 
   return [
     'Bring your donation during the selected window.',
-    'Check in with your name at the front desk when you arrive.',
+    "Leave your package with the front desk. Tell them it's for Beauty Forward.",
   ];
 }

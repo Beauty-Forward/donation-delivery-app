@@ -50,7 +50,7 @@ export function buildDropoffConfirmationEmail(data: DropoffConfirmationEmailData
     </table>
 
     ${notesSection}
-    ${nextStepsHtml('What to bring', nextSteps)}
+    ${nextStepsHtml('How it works', nextSteps)}
   `;
 
   return {
