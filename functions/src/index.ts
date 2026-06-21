@@ -42,7 +42,6 @@ import {
   DonorInfo,
   PickupDetails,
 } from './models.js';
-import { MockRoadieCourierProvider } from './providers/mock-roadie-provider.js';
 import {
   RoadieCourierProvider,
   isForwardCourierTransition,
@@ -79,18 +78,15 @@ const roadieApiKey = defineSecret('ROADIE_API_KEY');
 // request whose header doesn't match. Locally it comes from .env.local. See #107.
 const roadieWebhookToken = defineSecret('ROADIE_WEBHOOK_TOKEN');
 
-// Lazy-init: pick real-vs-mock on first dispatch call. Cloud Functions Gen2 (and the
-// emulator) populate process.env per-invocation, not at module load, so a top-level
-// check would always see the mock branch when the worker starts cold.
 let _courierProvider: CourierDispatchProvider | undefined;
 function getCourierProvider(): CourierDispatchProvider {
   if (_courierProvider) return _courierProvider;
-  _courierProvider = process.env['ROADIE_API_KEY']
-    ? new RoadieCourierProvider()
-    : new MockRoadieCourierProvider();
-  console.info(
-    `[courier] Using ${process.env['ROADIE_API_KEY'] ? 'RoadieCourierProvider' : 'MockRoadieCourierProvider'}`,
-  );
+  if (process.env['ROADIE_API_KEY']) {
+    _courierProvider = new RoadieCourierProvider();
+  } else {
+    throw new Error('No courier api key found');
+  }
+  console.info(`[courier] Using 'RoadieCourierProvider'`);
   return _courierProvider;
 }
 const givebutterService = new GivebutterService();
