@@ -309,6 +309,7 @@ export const createDonationRequest = onCall(
       } else {
         failureReason = verification.failureReason;
       }
+      status = verification.status;
 
       const update = {
         status,
