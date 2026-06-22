@@ -140,7 +140,7 @@ All in `functions/src/index.ts`, region `us-central1`, codebase `donor`:
 ### Roadie (courier dispatch)
 
 - `RoadieCourierService` calls a Roadie courier. Gated on a $15 donation.
-- A client-generated `idempotencyKey` is forwarded to Roadie to prevent duplicate bookings.
+- The donation `requestId` is forwarded to Roadie as the idempotency_key to prevent duplicate bookings.
 
 ### Givebutter (donations)
 

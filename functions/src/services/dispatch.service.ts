@@ -30,7 +30,6 @@ export async function verifyAndDispatchPickup(
   donor: DonorInfo,
   pickup: PickupDetails,
   deps: VerifyAndDispatchDeps,
-  idempotencyKey?: string,
 ): Promise<VerifyAndDispatchResult> {
   if (process.env['SKIP_GIVEBUTTER_VERIFICATION'] === 'true') {
     console.warn('[dev] SKIP_GIVEBUTTER_VERIFICATION is on; auto-verifying pickup', { requestId });
@@ -39,7 +38,6 @@ export async function verifyAndDispatchPickup(
         requestId,
         donor,
         pickup,
-        idempotencyKey,
       });
       return {
         status: 'queued_for_dispatch',
@@ -73,7 +71,6 @@ export async function verifyAndDispatchPickup(
         requestId,
         donor,
         pickup,
-        idempotencyKey,
       });
       return {
         status: 'queued_for_dispatch',

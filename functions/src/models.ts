@@ -65,6 +65,7 @@ export interface DropoffDetails {
 }
 
 export interface CreateDonationRequestPayload {
+  requestId: string;
   donationType: DonationType;
   donor: DonorInfo;
   contribution: ContributionIntent;
@@ -72,10 +73,6 @@ export interface CreateDonationRequestPayload {
   shipping?: ShippingDetails;
   dropoff?: DropoffDetails;
   metadata?: Record<string, unknown>;
-  // Client-generated, stable per donation attempt. Shared by the callable and
-  // the direct-Firestore fallback; forwarded to Roadie as idempotency_key to
-  // prevent a duplicate courier booking. See #113.
-  idempotencyKey?: string;
 }
 
 export interface DonationSubmissionResult {
@@ -106,11 +103,6 @@ export interface CourierDispatchInput {
   requestId: string;
   donor: DonorInfo;
   pickup: PickupDetails;
-  // Stable across retries of the same donation (client-generated; shared by the
-  // callable and the direct-Firestore fallback). Sent to Roadie as
-  // `idempotency_key` so a duplicate dispatch returns 409 instead of booking a
-  // second courier. Falls back to requestId when absent. See #113.
-  idempotencyKey?: string;
 }
 
 export interface CourierDispatchResult {

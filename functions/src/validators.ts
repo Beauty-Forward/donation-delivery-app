@@ -52,6 +52,7 @@ const dropoffSchema = z.object({
 
 export const createDonationRequestSchema = z
   .object({
+    requestId: z.string().min(8).max(200),
     donationType: z.enum(['pickup', 'shipping', 'dropoff']),
     donor: donorSchema,
     contribution: contributionSchema,
@@ -59,7 +60,6 @@ export const createDonationRequestSchema = z
     shipping: shippingSchema.optional(),
     dropoff: dropoffSchema.optional(),
     metadata: z.record(z.unknown()).optional(),
-    idempotencyKey: z.string().min(8).max(200).optional(),
   })
   .superRefine((payload, context) => {
     if (payload.donationType === 'pickup' && !payload.pickup) {

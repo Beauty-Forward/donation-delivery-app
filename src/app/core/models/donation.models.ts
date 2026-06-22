@@ -83,6 +83,7 @@ export interface DropoffFlowDraft {
 }
 
 export interface CreateDonationRequestPayload {
+  requestId: string;
   donationType: DonationType;
   donor: DonorInfo;
   contribution: ContributionIntent;
@@ -90,10 +91,6 @@ export interface CreateDonationRequestPayload {
   shipping?: ShippingDetails;
   dropoff?: DropoffDetails;
   metadata?: Record<string, unknown>;
-  // Stable per donation attempt. Sent to the callable and reused in the
-  // direct-Firestore fallback so both dispatch attempts share one Roadie
-  // idempotency_key — preventing a duplicate courier booking. See #113.
-  idempotencyKey?: string;
 }
 
 export interface DonationSubmissionResult {

@@ -182,14 +182,8 @@ export const createDonationRequest = onCall(
 
     const payload = parsed.data as CreateDonationRequestPayload;
     const createdAt = Timestamp.now();
-    // Deterministic doc id: the client sends the same idempotencyKey to this
-    // callable AND reuses it in the direct-Firestore fallback, so both collapse
-    // onto ONE doc instead of creating two (which would mean two emails). The
-    // create-only transaction below makes whoever's second back off. Legacy
-    // clients without a key fall back to an auto id (old behavior). See #113 (L1).
-    const requestRef = payload.idempotencyKey
-      ? db.collection('donation_requests').doc(payload.idempotencyKey)
-      : db.collection('donation_requests').doc();
+
+    const requestRef = db.collection('donation_requests').doc(payload.requestId);
 
     let status: DonationStatus = 'submitted';
     let courierDispatchId: string | undefined;
@@ -215,6 +209,7 @@ export const createDonationRequest = onCall(
     }
 
     const baseDoc = {
+      requestId: payload.requestId,
       donationType: payload.donationType,
       donor: payload.donor,
       contribution: payload.contribution,
@@ -224,10 +219,6 @@ export const createDonationRequest = onCall(
       status,
       createdAt,
       updatedAt: createdAt,
-      // Persisted so the verifyContributionAndDispatch trigger (backstop path)
-      // forwards the same key to Roadie. db.settings ignoreUndefinedProperties
-      // strips this when absent. See #113.
-      idempotencyKey: payload.idempotencyKey,
       metadata: {
         ...payload.metadata,
         source: 'public-web',
@@ -243,10 +234,7 @@ export const createDonationRequest = onCall(
       if (!isAlreadyExistsError(err)) {
         throw err;
       }
-      // Same idempotencyKey already created this donation — the direct-Firestore
-      // fallback (or a retry of this callable). Don't duplicate the doc or
-      // re-dispatch; whoever created it owns dispatch (its inline path or its
-      // onCreate trigger). Return the doc's current state. See #113 (L1).
+
       const existing = (await requestRef.get()).data() ?? {};
       const existingMeta = (existing['metadata'] ?? {}) as Record<string, unknown>;
       return {
@@ -300,7 +288,6 @@ export const createDonationRequest = onCall(
           givebutterService,
           courierService: getCourierService(),
         },
-        payload.idempotencyKey,
       );
 
       if (verification.status === 'queued_for_dispatch') {
@@ -453,16 +440,10 @@ export const verifyContributionAndDispatch = onDocumentCreated(
 
     // Backstop path: the frontend's direct-Firestore-write fallback (used when
     // the callable times out) skips the synchronous verification, so we run it here.
-    const verification = await verifyAndDispatchPickup(
-      requestId,
-      data['donor'],
-      data['pickup'],
-      {
-        givebutterService,
-        courierService: getCourierService(),
-      },
-      data['idempotencyKey'] as string | undefined,
-    );
+    const verification = await verifyAndDispatchPickup(requestId, data['donor'], data['pickup'], {
+      givebutterService,
+      courierService: getCourierService(),
+    });
 
     const update = {
       status: verification.status,

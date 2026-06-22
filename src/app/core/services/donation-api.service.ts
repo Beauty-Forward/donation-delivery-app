@@ -89,12 +89,7 @@ export class DonationApiService {
       },
     };
 
-    // Deterministic doc id, shared with the callable via idempotencyKey, so both
-    // collapse onto one doc. Create-if-not-exists: if the callable already wrote
-    // this doc (the common timeout case), back off rather than overwrite — an
-    // overwrite would wipe its status/email-sent flag and trigger a second
-    // confirmation email. See #113 (L1).
-    const requestId = payload.idempotencyKey ?? crypto.randomUUID();
+    const requestId = payload.requestId;
     const firestore = this.firebaseClient.firestore;
     const donationRef = doc(firestore, 'donation_requests', requestId);
 
@@ -108,7 +103,8 @@ export class DonationApiService {
 
     // The callable may have advanced the doc past the initial status (e.g. to
     // queued_for_dispatch). Reflect whatever is actually persisted.
-    const finalStatus = ((await getDoc(donationRef)).data()?.['status'] as DonationStatus) ?? status;
+    const finalStatus =
+      ((await getDoc(donationRef)).data()?.['status'] as DonationStatus) ?? status;
 
     return {
       requestId,

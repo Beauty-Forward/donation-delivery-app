@@ -168,6 +168,7 @@ interface PayloadOptions {
   warehouseContactPhone: string;
 }
 
+// POST /shipments as per Roadie documentation
 export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadOptions) {
   const { requestId, donor, pickup } = input;
   const { pickupAfter, deliverStart, deliverEnd } = buildTimeWindow(
@@ -177,11 +178,7 @@ export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadO
 
   return {
     reference_id: requestId,
-    // Roadie dedupes on this: a duplicate create with the same key yields 409
-    // after the first 200, so the callable and the fallback can't both book a
-    // courier for the same donation. Falls back to requestId when no shared
-    // client key is present. See #113.
-    idempotency_key: input.idempotencyKey ?? requestId,
+    idempotency_key: requestId,
     description: 'Beauty Forward donation pickup',
     items: [
       {

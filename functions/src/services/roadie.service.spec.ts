@@ -223,20 +223,16 @@ describe('RoadieCourierService', () => {
     expect(result).toEqual({ service: 'roadie', dispatchId: '', status: 'queued', etaWindow: '' });
   });
 
-  it('sends idempotency_key: the input key when present, else the requestId', async () => {
+  it('sends the requestId as the idempotency_key', async () => {
     const { fn, calls } = makeFetchMock([
       { status: 201, body: { id: 'a', status: 'created' } },
       { status: 201, body: { id: 'b', status: 'created' } },
     ]);
     const service = new RoadieCourierService('k', 'https://s.test/v1', 5000, 'W', '5550000000', fn);
 
-    await service.dispatchPickup({ ...farFutureInput, idempotencyKey: 'idem_xyz' });
-    await service.dispatchPickup(farFutureInput); // no idempotencyKey
+    await service.dispatchPickup(farFutureInput);
 
     expect(JSON.parse((calls[0]![1] as RequestInit).body as string).idempotency_key).toBe(
-      'idem_xyz',
-    );
-    expect(JSON.parse((calls[1]![1] as RequestInit).body as string).idempotency_key).toBe(
       'req_abc123',
     );
   });
