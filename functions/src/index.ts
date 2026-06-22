@@ -47,7 +47,6 @@ import {
   isForwardCourierTransition,
   roadieEventToStatus,
 } from './services/roadie.service.js';
-import type { CourierDispatchService } from './services/courier.service.js';
 import { GivebutterService } from './services/givebutter.service.js';
 import { HubspotService } from './services/hubspot.service.js';
 import { ResendEmailService } from './services/resend.service.js';
@@ -69,7 +68,7 @@ const db = getFirestore();
 db.settings({ ignoreUndefinedProperties: true });
 // Roadie production credential. Bound to every function that dispatches (see the
 // `secrets` option on each below); Firebase injects it as process.env.ROADIE_API_KEY
-// at runtime, which RoadieCourierProvider reads. Locally it comes from .env.local
+// at runtime, which RoadieCourierService reads. Locally it comes from .env.local
 // instead, so the emulator runs against the Roadie sandbox.
 const roadieApiKey = defineSecret('ROADIE_API_KEY');
 // Shared token that proves an inbound webhook is genuinely from Roadie. Roadie
@@ -78,16 +77,11 @@ const roadieApiKey = defineSecret('ROADIE_API_KEY');
 // request whose header doesn't match. Locally it comes from .env.local. See #107.
 const roadieWebhookToken = defineSecret('ROADIE_WEBHOOK_TOKEN');
 
-let _courierProvider: CourierDispatchService | undefined;
-function getCourierProvider(): CourierDispatchService {
-  if (_courierProvider) return _courierProvider;
-  if (process.env['ROADIE_API_KEY']) {
-    _courierProvider = new RoadieCourierService();
-  } else {
-    throw new Error('No courier api key found');
-  }
-  console.info(`[courier] Using 'RoadieCourierService'`);
-  return _courierProvider;
+let _courierService: RoadieCourierService | undefined;
+function getCourierService(): RoadieCourierService {
+  if (_courierService) return _courierService;
+  _courierService = new RoadieCourierService();
+  return _courierService;
 }
 const givebutterService = new GivebutterService();
 const hubspotService = new HubspotService();
@@ -186,8 +180,6 @@ export const createDonationRequest = onCall(
     }
 
     if (payload.donationType === 'shipping' && payload.shipping) {
-      // The donor ships the package to the warehouse themselves; the doc create
-      // is the success moment. A real prepaid-label provider is tracked for v2.
       status = 'awaiting_shipment';
     }
 
@@ -279,7 +271,7 @@ export const createDonationRequest = onCall(
         payload.pickup,
         {
           givebutterService,
-          courierProvider: getCourierProvider(),
+          courierService: getCourierService(),
         },
         payload.idempotencyKey,
       );
@@ -454,7 +446,7 @@ export const verifyContributionAndDispatch = onDocumentCreated(
       data['pickup'],
       {
         givebutterService,
-        courierProvider: getCourierProvider(),
+        courierService: getCourierService(),
       },
       data['idempotencyKey'] as string | undefined,
     );
@@ -774,7 +766,7 @@ export const handleGivebutterWebhook = onRequest(
         completedAmount >= getPickupDonationMinUsd()
       ) {
         try {
-          const dispatch = await getCourierProvider().dispatchPickup({
+          const dispatch = await getCourierService().dispatchPickup({
             requestId,
             donor: data['donor'],
             pickup: data['pickup'],

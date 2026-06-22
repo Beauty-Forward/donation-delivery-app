@@ -67,8 +67,7 @@ functions/src/
 ├── dispatch-routing.ts   # routing guard for the verify+dispatch trigger
 ├── firestore-utils.ts
 ├── warehouse.ts
-├── providers/            # courier-provider.ts (interface), roadie-provider.ts
-├── services/             # givebutter, hubspot, resend, dispatch
+├── services/             # roadie, givebutter, hubspot, resend, dispatch
 ├── email/templates/      # base-layout + pickup/shipping/dropoff/recovery emails
 └── utils/dropoff-reference.ts
 
@@ -140,8 +139,7 @@ All in `functions/src/index.ts`, region `us-central1`, codebase `donor`:
 
 ### Roadie (courier dispatch)
 
-- `CourierDispatchProvider` interface with one implementation: `RoadieCourierProvider`.
-- The **real** provider runs when `ROADIE_API_KEY` is present; otherwise the mock runs, so local dev without keys is harmless.
+- `RoadieCourierService` calls a Roadie courier. Gated on a $15 donation.
 - A client-generated `idempotencyKey` is forwarded to Roadie to prevent duplicate bookings.
 
 ### Givebutter (donations)

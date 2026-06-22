@@ -1,5 +1,5 @@
 import type { DonorInfo, PickupDetails } from '../models.js';
-import type { CourierDispatchService } from './courier.service.js';
+import type { RoadieCourierService } from './roadie.service.js';
 import { GivebutterService, type VerificationMatchType } from './givebutter.service.js';
 import { getPickupDonationMinUsd } from '../validators.js';
 
@@ -19,7 +19,7 @@ export interface VerifyAndDispatchResult {
 // inspecting the returned result.
 export interface VerifyAndDispatchDeps {
   givebutterService: GivebutterService;
-  courierProvider: CourierDispatchService;
+  courierService: RoadieCourierService;
 }
 
 // Pure verification + dispatch. Caller owns persistence — this lets
@@ -41,7 +41,7 @@ export async function verifyAndDispatchPickup(
   if (process.env['SKIP_GIVEBUTTER_VERIFICATION'] === 'true') {
     console.warn('[dev] SKIP_GIVEBUTTER_VERIFICATION is on; auto-verifying pickup', { requestId });
     try {
-      const dispatch = await deps.courierProvider.dispatchPickup({
+      const dispatch = await deps.courierService.dispatchPickup({
         requestId,
         donor,
         pickup,
@@ -74,7 +74,7 @@ export async function verifyAndDispatchPickup(
 
   if (verification.kind === 'verified') {
     try {
-      const dispatch = await deps.courierProvider.dispatchPickup({
+      const dispatch = await deps.courierService.dispatchPickup({
         requestId,
         donor,
         pickup,
