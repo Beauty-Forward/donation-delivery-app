@@ -7,6 +7,7 @@ export type DonationStatus =
   | 'payment_verification_failed'
   | 'queued_for_dispatch'
   | 'dispatch_requested'
+  | 'awaiting_dispatch'
   // Pickup-courier lifecycle, advanced by the Roadie inbound webhook
   // (handleRoadieWebhook). queued_for_dispatch → dispatch_requested (driver
   // assigned) → in_transit (en route) → delivered (terminal success).

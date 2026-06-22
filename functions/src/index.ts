@@ -50,7 +50,7 @@ import {
 import { GivebutterService } from './services/givebutter.service.js';
 import { HubspotService } from './services/hubspot.service.js';
 import { ResendEmailService } from './services/resend.service.js';
-import { verifyAndDispatchPickup } from './services/dispatch.service.js';
+import { verifyAndDispatchPickup, VerifyAndDispatchResult } from './services/dispatch.service.js';
 import { WAREHOUSE_ADDRESS } from './warehouse.js';
 import {
   createContributionSessionSchema,
@@ -148,6 +148,29 @@ async function notifyPickupQueued(
   );
 }
 
+function getVerificationMetadata(v: VerifyAndDispatchResult) {
+  switch (v.status) {
+    case 'queued_for_dispatch':
+      return {
+        courierDispatchId: v.courierDispatchId,
+        verificationTransactionId: v.verificationTransactionId,
+        verifiedAmountUsd: v.verifiedAmountUsd,
+        verificationMatchType: v.verificationMatchType,
+      };
+    case 'awaiting_dispatch':
+      return {
+        verificationTransactionId: v.verificationTransactionId,
+        verifiedAmountUsd: v.verifiedAmountUsd,
+        verificationMatchType: v.verificationMatchType,
+      };
+    case 'awaiting_payment':
+    case 'payment_verification_failed':
+      return {
+        verificationFailureReason: v.failureReason,
+      };
+  }
+}
+
 export const createDonationRequest = onCall(
   { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB', secrets: [roadieApiKey] },
   async (request) => {
@@ -176,7 +199,11 @@ export const createDonationRequest = onCall(
     if (payload.donationType === 'pickup' && payload.pickup) {
       // Initial status; the synchronous verification below transitions it to a
       // terminal state before this callable returns.
-      status = 'verifying_payment';
+      if (process.env['SKIP_GIVEBUTTER_VERIFICATION'] === 'true') {
+        status = 'queued_for_dispatch';
+      } else {
+        status = 'verifying_payment';
+      }
     }
 
     if (payload.donationType === 'shipping' && payload.shipping) {
@@ -276,10 +303,12 @@ export const createDonationRequest = onCall(
         payload.idempotencyKey,
       );
 
-      status = verification.status;
-      courierDispatchId = verification.courierDispatchId;
-      verifiedAmountUsd = verification.verifiedAmountUsd;
-      failureReason = verification.failureReason;
+      if (verification.status === 'queued_for_dispatch') {
+        courierDispatchId = verification.courierDispatchId;
+        verifiedAmountUsd = verification.verifiedAmountUsd;
+      } else {
+        failureReason = verification.failureReason;
+      }
 
       const update = {
         status,
@@ -291,24 +320,7 @@ export const createDonationRequest = onCall(
         },
         metadata: {
           ...(baseDoc.metadata ?? {}),
-          ...(verification.courierDispatchId
-            ? { courierDispatchId: verification.courierDispatchId }
-            : {}),
-          ...(verification.verificationTransactionId
-            ? { verificationTransactionId: verification.verificationTransactionId }
-            : {}),
-          ...(verification.verificationMatchType
-            ? { verificationMatchType: verification.verificationMatchType }
-            : {}),
-          ...(verification.failureReason
-            ? { verificationFailureReason: verification.failureReason }
-            : {}),
-          // Persisted even on the courier_dispatch_failed stall so the 24h SLA
-          // email can quote the real, Givebutter-verified amount (the doc's
-          // contribution.amountUsd only gets the verified figure on success).
-          ...(verification.verifiedAmountUsd != null
-            ? { verifiedAmountUsd: verification.verifiedAmountUsd }
-            : {}),
+          ...getVerificationMetadata(verification),
         },
         updatedAt: Timestamp.now(),
       };
@@ -461,22 +473,7 @@ export const verifyContributionAndDispatch = onDocumentCreated(
       },
       metadata: {
         ...(data['metadata'] ?? {}),
-        ...(verification.courierDispatchId
-          ? { courierDispatchId: verification.courierDispatchId }
-          : {}),
-        ...(verification.verificationTransactionId
-          ? { verificationTransactionId: verification.verificationTransactionId }
-          : {}),
-        ...(verification.verificationMatchType
-          ? { verificationMatchType: verification.verificationMatchType }
-          : {}),
-        ...(verification.failureReason
-          ? { verificationFailureReason: verification.failureReason }
-          : {}),
-        // See the callable path above — quote the verified amount in the SLA email.
-        ...(verification.verifiedAmountUsd != null
-          ? { verifiedAmountUsd: verification.verifiedAmountUsd }
-          : {}),
+        ...getVerificationMetadata(verification),
       },
       updatedAt: Timestamp.now(),
     };
