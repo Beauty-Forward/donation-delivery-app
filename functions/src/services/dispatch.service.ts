@@ -33,23 +33,18 @@ export async function verifyAndDispatchPickup(
 ): Promise<VerifyAndDispatchResult> {
   if (process.env['SKIP_GIVEBUTTER_VERIFICATION'] === 'true') {
     console.warn('[dev] SKIP_GIVEBUTTER_VERIFICATION is on; auto-verifying pickup', { requestId });
-    try {
-      const dispatch = await deps.courierService.dispatchPickup({
-        requestId,
-        donor,
-        pickup,
-      });
-      return {
-        status: 'queued_for_dispatch',
-        courierDispatchId: dispatch.dispatchId,
-        verifiedAmountUsd: getPickupDonationMinUsd(),
-        verificationTransactionId: 'dev_skip_verification',
-        verificationMatchType: 'skipped',
-      };
-    } catch (err) {
-      console.error('Dev-skip dispatch failed', { requestId, err });
-      return { status: 'awaiting_payment', failureReason: 'dev_skip_dispatch_failed' };
-    }
+    const dispatch = await deps.courierService.dispatchPickup({
+      requestId,
+      donor,
+      pickup,
+    });
+    return {
+      status: 'queued_for_dispatch',
+      courierDispatchId: dispatch.dispatchId,
+      verifiedAmountUsd: getPickupDonationMinUsd(),
+      verificationTransactionId: 'dev_skip_verification',
+      verificationMatchType: 'skipped',
+    };
   }
 
   if (!donor.email) {
