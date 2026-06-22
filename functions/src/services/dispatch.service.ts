@@ -76,7 +76,7 @@ export async function verifyAndDispatchPickup(
         verifiedAmountUsd: verification.amountUsd,
         verificationTransactionId: verification.transactionId,
         verificationMatchType: verification.matchType,
-        failureReason: 'courier_dispatch_failed' + err,
+        failureReason: 'courier_dispatch_failed',
       };
     }
   }
