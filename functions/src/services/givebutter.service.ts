@@ -7,7 +7,7 @@ import { ContributionSessionResponse, CreateContributionSessionPayload } from '.
 export type VerificationMatchType = 'email' | 'name_fallback';
 
 // Discriminated union returned by findRecentTransactionForDonor. The verification
-// path branches on `kind` to decide whether to dispatch the courier, mark the
+// path branches on `outcome` to decide whether to dispatch the courier, mark the
 // request as failed (and email the donor), or fall back to the webhook recovery path.
 //
 // `reason: 'not_found'` is the only rejection variant today: the Givebutter widget
@@ -16,9 +16,14 @@ export type VerificationMatchType = 'email' | 'name_fallback';
 // `incomplete` and `amount_below_minimum` were defensive branches; both were dead.
 // If Givebutter's behavior diverges in the future, expand this union explicitly.
 export type GivebutterVerification =
-  | { kind: 'verified'; amountUsd: number; transactionId: string; matchType: VerificationMatchType }
-  | { kind: 'rejected'; reason: 'not_found' }
-  | { kind: 'error'; reason: string };
+  | {
+      outcome: 'verified';
+      amountUsd: number;
+      transactionId: string;
+      matchType: VerificationMatchType;
+    }
+  | { outcome: 'rejected'; reason: 'not_found' }
+  | { outcome: 'error'; reason: string };
 
 export class GivebutterService {
   // The Givebutter REST API base. Override in tests / staging via env.
@@ -96,12 +101,12 @@ export class GivebutterService {
     lookbackMinutes: number,
   ): Promise<GivebutterVerification> {
     if (!this.apiKey) {
-      return { kind: 'error', reason: 'givebutter_api_key_not_configured' };
+      return { outcome: 'error', reason: 'givebutter_api_key_not_configured' };
     }
 
     const normalizedEmail = donorEmail.trim().toLowerCase();
     if (!normalizedEmail) {
-      return { kind: 'rejected', reason: 'not_found' };
+      return { outcome: 'rejected', reason: 'not_found' };
     }
 
     const donorTokens = nameTokens(donorFullName);
@@ -132,7 +137,7 @@ export class GivebutterService {
         });
 
         if (!res.ok) {
-          return { kind: 'error', reason: `givebutter_http_${res.status}` };
+          return { outcome: 'error', reason: `givebutter_http_${res.status}` };
         }
 
         const body = (await res.json()) as {
@@ -192,7 +197,7 @@ export class GivebutterService {
           if (txnEmail === normalizedEmail) {
             // Strong signal — short-circuit immediately.
             return {
-              kind: 'verified',
+              outcome: 'verified',
               amountUsd: amountPaid,
               transactionId: typeof txn.id === 'string' ? txn.id : '',
               matchType: 'email',
@@ -202,7 +207,10 @@ export class GivebutterService {
           // No email match. Stash as a name-fallback candidate if the name lines up.
           if (
             donorTokens.size > 0 &&
-            nameTokensMatch(donorTokens, nameTokens(`${txn.first_name ?? ''} ${txn.last_name ?? ''}`)) &&
+            nameTokensMatch(
+              donorTokens,
+              nameTokens(`${txn.first_name ?? ''} ${txn.last_name ?? ''}`),
+            ) &&
             !nameCandidates.has(txnEmail)
           ) {
             // First (most recent) transaction per distinct email wins.
@@ -226,7 +234,7 @@ export class GivebutterService {
       if (nameCandidates.size === 1) {
         const [candidate] = [...nameCandidates.values()];
         return {
-          kind: 'verified',
+          outcome: 'verified',
           amountUsd: candidate.amountUsd,
           transactionId: candidate.transactionId,
           matchType: 'name_fallback',
@@ -241,13 +249,13 @@ export class GivebutterService {
         });
       }
 
-      return { kind: 'rejected', reason: 'not_found' };
+      return { outcome: 'rejected', reason: 'not_found' };
     } catch (err) {
       const reason =
         err instanceof Error && err.name === 'AbortError'
           ? 'givebutter_timeout'
           : 'givebutter_network_error';
-      return { kind: 'error', reason };
+      return { outcome: 'error', reason };
     } finally {
       clearTimeout(timer);
     }

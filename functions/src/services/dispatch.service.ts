@@ -47,11 +47,6 @@ export async function verifyAndDispatchPickup(
     };
   }
 
-  if (!donor.email) {
-    console.error('Pickup donation_request missing donor.email', { requestId });
-    return { status: 'payment_verification_failed', failureReason: 'missing_donor_email' };
-  }
-
   const lookbackMinutes = Number(process.env['GIVEBUTTER_DONATION_LOOKBACK_MINUTES'] ?? 30);
   const verification = await deps.givebutterService.findRecentTransactionForDonor(
     donor.email,
@@ -60,7 +55,7 @@ export async function verifyAndDispatchPickup(
     lookbackMinutes,
   );
 
-  if (verification.kind === 'verified') {
+  if (verification.outcome === 'verified') {
     try {
       const dispatch = await deps.courierService.dispatchPickup({
         requestId,
@@ -81,19 +76,19 @@ export async function verifyAndDispatchPickup(
         verifiedAmountUsd: verification.amountUsd,
         verificationTransactionId: verification.transactionId,
         verificationMatchType: verification.matchType,
-        failureReason: 'courier_dispatch_failed', // TODO: surface Roadie error
+        failureReason: 'courier_dispatch_failed' + err,
       };
     }
   }
 
-  if (verification.kind === 'rejected') {
+  if (verification.outcome === 'rejected') {
     return {
       status: 'payment_verification_failed',
       failureReason: verification.reason,
     };
   }
 
-  // verification.kind === 'error' — Givebutter API was unavailable.
+  // verification.outcome === 'error' — Givebutter API was unavailable.
   console.warn('Givebutter verification errored; falling back to webhook recovery', {
     requestId,
     reason: verification.reason,
