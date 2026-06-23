@@ -38,9 +38,6 @@ function makeService(): GivebutterService {
   return new GivebutterService(undefined, 'https://api.test/v1', 'test-key');
 }
 
-const MIN_USD = 20;
-const LOOKBACK_MIN = 30;
-
 describe('GivebutterService.findRecentTransactionForDonor', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -60,8 +57,6 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     const result = await makeService().findRecentTransactionForDonor(
       'jane@gmail.com',
       'Jane Donor',
-      MIN_USD,
-      LOOKBACK_MIN,
     );
 
     expect(result).toEqual({
@@ -78,8 +73,6 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     const result = await makeService().findRecentTransactionForDonor(
       '  JANE@Gmail.com ',
       'Jane Donor',
-      MIN_USD,
-      LOOKBACK_MIN,
     );
 
     expect(result.outcome).toBe('verified');
@@ -101,8 +94,6 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     const result = await makeService().findRecentTransactionForDonor(
       'jane@gmial.com',
       'Jane Donor',
-      MIN_USD,
-      LOOKBACK_MIN,
     );
 
     expect(result).toEqual({
@@ -127,8 +118,6 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     const result = await makeService().findRecentTransactionForDonor(
       'wizard@x.com',
       '  Jane   Donor ',
-      MIN_USD,
-      LOOKBACK_MIN,
     );
 
     expect(result.outcome).toBe('verified');
@@ -152,8 +141,6 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     const result = await makeService().findRecentTransactionForDonor(
       'wizard@x.com',
       'Jane Q Donor',
-      MIN_USD,
-      LOOKBACK_MIN,
     );
 
     expect(result.outcome).toBe('verified');
@@ -171,12 +158,7 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
       },
     ]);
 
-    const result = await makeService().findRecentTransactionForDonor(
-      'wizard@x.com',
-      'Donor Jane',
-      MIN_USD,
-      LOOKBACK_MIN,
-    );
+    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Donor Jane');
 
     expect(result.outcome).toBe('verified');
     if (result.outcome === 'verified') expect(result.matchType).toBe('name_fallback');
@@ -193,12 +175,7 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
       },
     ]);
 
-    const result = await makeService().findRecentTransactionForDonor(
-      'wizard@x.com',
-      'Donor, Jane',
-      MIN_USD,
-      LOOKBACK_MIN,
-    );
+    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Donor, Jane');
 
     expect(result.outcome).toBe('verified');
     if (result.outcome === 'verified') expect(result.matchType).toBe('name_fallback');
@@ -215,12 +192,7 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
       },
     ]);
 
-    const result = await makeService().findRecentTransactionForDonor(
-      'wizard@x.com',
-      'Jose Garcia',
-      MIN_USD,
-      LOOKBACK_MIN,
-    );
+    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Jose Garcia');
 
     expect(result.outcome).toBe('verified');
     if (result.outcome === 'verified') expect(result.matchType).toBe('name_fallback');
@@ -240,8 +212,6 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     const result = await makeService().findRecentTransactionForDonor(
       'wizard@x.com',
       'Mary Anne Smith',
-      MIN_USD,
-      LOOKBACK_MIN,
     );
 
     expect(result.outcome).toBe('verified');
@@ -261,12 +231,7 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
       },
     ]);
 
-    const result = await makeService().findRecentTransactionForDonor(
-      'wizard@x.com',
-      'Jane',
-      MIN_USD,
-      LOOKBACK_MIN,
-    );
+    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Jane');
 
     expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
   });
@@ -276,12 +241,7 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
       { id: 'txn_1', email: 'other@x.com', first_name: 'Bob', last_name: 'Smith', amount_paid: 25 },
     ]);
 
-    const result = await makeService().findRecentTransactionForDonor(
-      'wizard@x.com',
-      'Jane Donor',
-      MIN_USD,
-      LOOKBACK_MIN,
-    );
+    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Jane Donor');
 
     expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
   });
@@ -306,12 +266,7 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
       },
     ]);
 
-    const result = await makeService().findRecentTransactionForDonor(
-      'wizard@x.com',
-      'Jose Garcia',
-      MIN_USD,
-      LOOKBACK_MIN,
-    );
+    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Jose Garcia');
 
     expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
   });
@@ -330,8 +285,6 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     const result = await makeService().findRecentTransactionForDonor(
       'jane@gmail.com',
       'Jane Donor',
-      MIN_USD,
-      LOOKBACK_MIN,
     );
 
     expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
@@ -360,8 +313,6 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     const result = await makeService().findRecentTransactionForDonor(
       'jane@gmail.com',
       'Jane Donor',
-      MIN_USD,
-      LOOKBACK_MIN,
     );
 
     expect(result.outcome).toBe('verified');
@@ -393,8 +344,6 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     const result = await makeService().findRecentTransactionForDonor(
       'jane@gmail.com',
       'Jane Donor',
-      MIN_USD,
-      LOOKBACK_MIN,
     );
 
     expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
@@ -421,8 +370,6 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     const result = await makeService().findRecentTransactionForDonor(
       'jane@gmail.com',
       'Jane Donor',
-      MIN_USD,
-      LOOKBACK_MIN,
     );
 
     expect(result.outcome).toBe('verified');
@@ -447,8 +394,6 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     const result = await makeService().findRecentTransactionForDonor(
       'jane@gmail.com',
       'Jane Donor',
-      MIN_USD,
-      LOOKBACK_MIN,
     );
 
     expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
@@ -459,24 +404,14 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
       { id: 'txn_1', email: 'other@x.com', first_name: '', last_name: '', amount_paid: 25 },
     ]);
 
-    const result = await makeService().findRecentTransactionForDonor(
-      'jane@gmail.com',
-      '   ',
-      MIN_USD,
-      LOOKBACK_MIN,
-    );
+    const result = await makeService().findRecentTransactionForDonor('jane@gmail.com', '   ');
 
     expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
   });
 
   it('returns an error result when the API key is not configured', async () => {
     const svc = new GivebutterService(undefined, 'https://api.test/v1', '');
-    const result = await svc.findRecentTransactionForDonor(
-      'jane@gmail.com',
-      'Jane Donor',
-      MIN_USD,
-      LOOKBACK_MIN,
-    );
+    const result = await svc.findRecentTransactionForDonor('jane@gmail.com', 'Jane Donor');
     expect(result).toEqual({ outcome: 'error', reason: 'givebutter_api_key_not_configured' });
   });
 });

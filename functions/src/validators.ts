@@ -5,7 +5,7 @@ import { z } from 'zod';
 // from .env.local) aren't reliably present when modules first evaluate, so caching this
 // in a const would freeze it at the 15 fallback regardless of what the env says.
 export function getPickupDonationMinUsd(): number {
-  return Number(process.env.PICKUP_DONATION_MIN_USD ?? 100);
+  return Number(process.env.PICKUP_DONATION_MIN_USD ?? 15);
 }
 
 const addressSchema = z.object({

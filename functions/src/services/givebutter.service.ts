@@ -1,4 +1,5 @@
 import { ContributionSessionResponse, CreateContributionSessionPayload } from '../models.js';
+import { getPickupDonationMinUsd } from '../validators.js';
 
 // How a transaction was matched back to the donor. `email` is the strong signal
 // (donor's wizard email == transaction email). `name_fallback` means the email
@@ -97,8 +98,6 @@ export class GivebutterService {
   async findRecentTransactionForDonor(
     donorEmail: string,
     donorFullName: string,
-    minimumUsd: number,
-    lookbackMinutes: number,
   ): Promise<GivebutterVerification> {
     if (!this.apiKey) {
       return { outcome: 'error', reason: 'givebutter_api_key_not_configured' };
@@ -108,6 +107,9 @@ export class GivebutterService {
     if (!normalizedEmail) {
       return { outcome: 'rejected', reason: 'not_found' };
     }
+
+    const lookbackMinutes = Number(process.env['GIVEBUTTER_DONATION_LOOKBACK_MINUTES'] ?? 30);
+    const minimumUsd = getPickupDonationMinUsd();
 
     const donorTokens = nameTokens(donorFullName);
 

@@ -165,7 +165,7 @@ every variable). Highlights:
 
 - `ROADIE_API_KEY` — **secret**, set via `firebase functions:secrets:set ROADIE_API_KEY` (Secret Manager), never in `.env`. Sandbox key goes in `.env.local` for local dev.
 - `ROADIE_API_BASE_URL`, `WAREHOUSE_CONTACT_NAME`, `WAREHOUSE_CONTACT_PHONE`
-- `GIVEBUTTER_CAMPAIGN_URL`, `GIVEBUTTER_API_KEY`, `GIVEBUTTER_DONATION_LOOKBACK_MINUTES`
+- `GIVEBUTTER_CAMPAIGN_URL`, `GIVEBUTTER_API_KEY`
 - `PICKUP_DONATION_MIN_USD` — minimum verified contribution to unlock pickup dispatch
 - `HUBSPOT_SERVICE_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`
 - Local-only escape hatches (`.env.local`): `SKIP_GIVEBUTTER_VERIFICATION`, `FIRESTORE_EMULATOR_HOST`

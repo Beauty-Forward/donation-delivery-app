@@ -1,7 +1,6 @@
 import type { DonorInfo, PickupDetails } from '../models.js';
 import type { RoadieCourierService } from './roadie.service.js';
 import { GivebutterService, type VerificationMatchType } from './givebutter.service.js';
-import { getPickupDonationMinUsd } from '../validators.js';
 
 export type VerifyAndDispatchResult =
   | {
@@ -20,6 +19,7 @@ export type VerifyAndDispatchResult =
     }
   | { status: 'payment_not_found'; failureReason: string }
   | { status: 'payment_verification_failed'; failureReason: string };
+
 export interface VerifyAndDispatchDeps {
   givebutterService: GivebutterService;
   courierService: RoadieCourierService;
@@ -41,18 +41,15 @@ export async function verifyAndDispatchPickup(
     return {
       status: 'queued_for_dispatch',
       courierDispatchId: dispatch.dispatchId,
-      verifiedAmountUsd: getPickupDonationMinUsd(),
+      verifiedAmountUsd: 0, // Hardcoded at 0 because we run this path locally for testing. Re-review if we ever wanted to allow this in prod.
       verificationTransactionId: 'dev_skip_verification',
       verificationMatchType: 'skipped',
     };
   }
 
-  const lookbackMinutes = Number(process.env['GIVEBUTTER_DONATION_LOOKBACK_MINUTES'] ?? 30);
   const verification = await deps.givebutterService.findRecentTransactionForDonor(
     donor.email,
     donor.fullName,
-    getPickupDonationMinUsd(),
-    lookbackMinutes,
   );
 
   if (verification.outcome === 'verified') {
