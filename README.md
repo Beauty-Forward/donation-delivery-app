@@ -110,7 +110,7 @@ Every route loads the wizard component; `data.mode` tells it which step to rende
 }
 ```
 
-`DonationStatus` is one of: `submitted`, `verifying_payment`, `awaiting_payment`,
+`DonationStatus` is one of: `submitted`, `verifying_payment`,
 `payment_verification_failed`, `queued_for_dispatch`, `dispatch_requested`,
 `awaiting_shipment`, `dropoff_requested`, `completed`.
 

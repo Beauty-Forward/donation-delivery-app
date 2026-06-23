@@ -51,7 +51,7 @@ export class ResendEmailService {
     await this.send({ to: data.donor.email, subject, html });
   }
 
-  // The promised "within 24 hours" follow-up for pickups stuck in awaiting_payment
+  // The promised "within 24 hours" follow-up for pickups stuck in payment_verification_failed
   // (courier booking failed, or Givebutter verification errored). Sent by the
   // sendStalledDonationSlaEmails scheduled loop in index.ts.
   async sendStalledPickupEmail(data: StalledPickupEmailData): Promise<void> {

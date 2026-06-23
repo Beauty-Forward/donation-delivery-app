@@ -11,7 +11,6 @@ export type VerifyAndDispatchResult =
       verificationTransactionId: string;
       verificationMatchType: VerificationMatchType | 'skipped';
     }
-  | { status: 'awaiting_payment'; failureReason: string }
   | {
       status: 'awaiting_dispatch';
       verifiedAmountUsd: number;
@@ -19,6 +18,7 @@ export type VerifyAndDispatchResult =
       verificationMatchType: VerificationMatchType;
       failureReason: string;
     }
+  | { status: 'payment_not_found'; failureReason: string }
   | { status: 'payment_verification_failed'; failureReason: string };
 export interface VerifyAndDispatchDeps {
   givebutterService: GivebutterService;
@@ -83,7 +83,7 @@ export async function verifyAndDispatchPickup(
 
   if (verification.outcome === 'rejected') {
     return {
-      status: 'payment_verification_failed',
+      status: 'payment_not_found',
       failureReason: verification.reason,
     };
   }
@@ -93,5 +93,5 @@ export async function verifyAndDispatchPickup(
     requestId,
     reason: verification.reason,
   });
-  return { status: 'awaiting_payment', failureReason: verification.reason };
+  return { status: 'payment_verification_failed', failureReason: verification.reason };
 }

@@ -94,7 +94,7 @@ const resendEmailService = new ResendEmailService();
 //
 //   'confirmationEmailSentAt' — success-path emails (pickup / shipping / dropoff)
 //   'recoveryEmailSentAt'     — not_found recovery email
-//   'slaEmailSentAt'          — 24h "we're on it" email for awaiting_payment stalls
+//   'slaEmailSentAt'          — 24h "we're on it" email for payment_verification_failed and awaiting_dispatch stalls
 //
 // Read-then-write is non-transactional on purpose: a duplicate would only be
 // wasted bandwidth, and all callers are wrapped in their own happy-path flow,
@@ -163,7 +163,7 @@ function getVerificationMetadata(v: VerifyAndDispatchResult) {
         verifiedAmountUsd: v.verifiedAmountUsd,
         verificationMatchType: v.verificationMatchType,
       };
-    case 'awaiting_payment':
+    case 'payment_not_found':
     case 'payment_verification_failed':
       return {
         verificationFailureReason: v.failureReason,
@@ -318,14 +318,14 @@ export const createDonationRequest = onCall(
       if (verification.status === 'queued_for_dispatch') {
         await notifyPickupQueued(requestRef.id, payload.donor, payload.pickup!, courierDispatchId);
       } else if (
-        verification.status === 'payment_verification_failed' &&
+        verification.status === 'payment_not_found' &&
         verification.failureReason === 'not_found'
       ) {
         // Immediate recovery nudge while the wizard surfaces the rejection in-app.
         // This stays inline (not in the sendStalledDonationSlaEmails loop): a
         // 'not_found' result means Givebutter found no payment, so it's an abandoned-
-        // cart nudge, not an awaiting_payment SLA case. The scheduled loop owns the
-        // two awaiting_payment stalls (courier failure / Givebutter API error). See #64.
+        // cart nudge, not a payment_verification_failed SLA case. The scheduled loop owns the
+        // awaiting_dispatch and payment_verification_failed stalls (courier failure / Givebutter API error).
         await sendEmailOnce(requestRef.id, 'recoveryEmailSentAt', () =>
           resendEmailService.sendDonationRecoveryEmail({
             donor: payload.donor,
@@ -391,8 +391,8 @@ export const createContributionSession = onCall({ region: 'us-central1' }, async
 
 // Authoritative pickup payment gate. Fires on every donation_requests doc create.
 // For pickup, looks up Givebutter transactions by donor email + recency window,
-// dispatches the courier on success, marks payment_verification_failed (and emails
-// the donor) on explicit rejection, or drops to awaiting_payment if Givebutter API
+// dispatches the courier on success, marks payment_not_found (and emails
+// the donor) on explicit rejection, or drops to payment_verification_failed if Givebutter API
 // errors so ops can rescue. Non-pickup donations short-circuit immediately.
 //
 // Why email-based lookup instead of sessionId: the Givebutter Widgets SDK doesn't
@@ -433,7 +433,7 @@ export const verifyContributionAndDispatch = onDocumentCreated(
     if (
       currentStatus === 'queued_for_dispatch' ||
       currentStatus === 'payment_verification_failed' ||
-      currentStatus === 'awaiting_payment'
+      currentStatus === 'payment_not_found'
     ) {
       return;
     }
@@ -470,7 +470,7 @@ export const verifyContributionAndDispatch = onDocumentCreated(
         verification.courierDispatchId,
       );
     } else if (
-      verification.status === 'payment_verification_failed' &&
+      verification.status === 'payment_not_found' &&
       verification.failureReason === 'not_found'
     ) {
       // Backstop recovery send for the direct-Firestore-write fallback path,
@@ -486,7 +486,7 @@ export const verifyContributionAndDispatch = onDocumentCreated(
 );
 
 // Honors the confirmation page's "we'll email you within 24 hours" promise for the
-// two pickup stalls that land in awaiting_payment:
+// two pickup stalls that land in payment_verification_failed:
 //   - courier_dispatch_failed: Givebutter verified payment, only Roadie booking failed
 //   - any other failureReason:  Givebutter's API errored, so payment is still unknown
 //
@@ -494,7 +494,7 @@ export const verifyContributionAndDispatch = onDocumentCreated(
 // Because it queries live state, a doc the Givebutter webhook already rescued
 // (now queued_for_dispatch) no longer matches, so we never send a redundant
 // "we're having trouble" note. Firestore can't filter on a missing field, so we
-// query by status and filter slaEmailSentAt / recency in memory — the awaiting_payment
+// query by status and filter slaEmailSentAt / recency in memory — the payment_verification_failed
 // set is tiny.
 //
 // Recency guard: only email pickups created within RECENCY_WINDOW_MS. This keeps a
@@ -510,7 +510,7 @@ export const sendStalledDonationSlaEmails = onSchedule(
 
     const snapshot = await db
       .collection('donation_requests')
-      .where('status', '==', 'awaiting_payment')
+      .where('status', 'in', ['payment_verification_failed', 'awaiting_dispatch'])
       .get();
 
     let sent = 0;
@@ -543,11 +543,10 @@ export const sendStalledDonationSlaEmails = onSchedule(
         continue;
       }
 
-      // 'courier_dispatch_failed' means payment was verified — reassure with the
+      // 'awaiting_dispatch' means payment was verified — reassure with the
       // verified amount. Anything else is a Givebutter API error (payment unknown).
-      const failureReason = data['metadata']?.['verificationFailureReason'] as string | undefined;
       const situation =
-        failureReason === 'courier_dispatch_failed' ? 'dispatch_delayed' : 'payment_pending';
+        data.status === 'awaiting_dispatch' ? 'dispatch_delayed' : 'payment_pending';
       const verifiedAmountUsd =
         typeof data['metadata']?.['verifiedAmountUsd'] === 'number'
           ? (data['metadata']['verifiedAmountUsd'] as number)
@@ -572,12 +571,12 @@ export const sendStalledDonationSlaEmails = onSchedule(
   },
 );
 
-// Daily backstop for the immediate payment_verification_failed recovery email.
+// Daily backstop for the immediate payment_not_found recovery email.
 // That nudge fires inline from createDonationRequest / verifyContributionAndDispatch
 // the moment Givebutter rejects a pickup ('not_found'), but a transient Resend
 // outage — or a cold-start crash after the send but before sendEmailOnce stamps the
 // flag — would leave the donor with no email and the doc stuck in
-// payment_verification_failed forever. This sweep re-sends through the SAME
+// payment_not_found forever. This sweep re-sends through the SAME
 // recoveryEmailSentAt flag, so a donor who already got the immediate email is never
 // emailed twice. A doc the donor rescued late (paid -> webhook -> queued_for_dispatch)
 // no longer matches the status query, so it's never nudged.
@@ -600,7 +599,7 @@ export const sendStalledRecoveryEmails = onSchedule(
 
     const snapshot = await db
       .collection('donation_requests')
-      .where('status', '==', 'payment_verification_failed')
+      .where('status', '==', 'payment_not_found')
       .get();
 
     let sent = 0;
@@ -736,11 +735,12 @@ export const handleGivebutterWebhook = onRequest(
       // Pickup gate: dispatch the courier only after we've confirmed payment >= the minimum.
       // The webhook is a recovery path now (the verifyContributionAndDispatch trigger is the
       // primary gate); accept either verifying_payment (trigger never resolved, e.g. function
-      // crashed) or awaiting_payment (trigger explicitly fell back due to a Givebutter API
-      // error). queued_for_dispatch and payment_verification_failed are skipped — terminal.
+      // crashed) or payment_verification_failed (trigger explicitly fell back due to a Givebutter API
+      // error). queued_for_dispatch and payment_not_found are skipped — terminal.
       if (
         data?.['donationType'] === 'pickup' &&
-        (data?.['status'] === 'awaiting_payment' || data?.['status'] === 'verifying_payment') &&
+        (data?.['status'] === 'payment_verification_failed' ||
+          data?.['status'] === 'verifying_payment') &&
         typeof completedAmount === 'number' &&
         completedAmount >= getPickupDonationMinUsd()
       ) {
@@ -772,7 +772,8 @@ export const handleGivebutterWebhook = onRequest(
         }
       } else if (
         data?.['donationType'] === 'pickup' &&
-        (data?.['status'] === 'awaiting_payment' || data?.['status'] === 'verifying_payment') &&
+        (data?.['status'] === 'payment_verification_failed' ||
+          data?.['status'] === 'verifying_payment') &&
         (typeof completedAmount !== 'number' || completedAmount < getPickupDonationMinUsd())
       ) {
         console.warn('Pickup donation below minimum; not dispatching courier', {
@@ -780,10 +781,7 @@ export const handleGivebutterWebhook = onRequest(
           completedAmount,
           minimum: getPickupDonationMinUsd(),
         });
-      } else if (
-        data?.['donationType'] === 'pickup' &&
-        data?.['status'] === 'payment_verification_failed'
-      ) {
+      } else if (data?.['donationType'] === 'pickup' && data?.['status'] === 'payment_not_found') {
         // Verification trigger already rejected this; donor was emailed. Manual ops review.
         console.warn('Webhook arrived for already-failed verification; ignoring', {
           requestId,

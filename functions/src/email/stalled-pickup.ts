@@ -2,8 +2,9 @@ import { DonorInfo } from '../models.js';
 import { wrapInBaseLayout, eyebrowHtml, headingHtml, bodyTextHtml } from './base-layout.js';
 import { COLORS } from './base-layout.js';
 
-// The two awaiting_payment situations the confirmation page promises a 24-hour
-// follow-up email for. Kept as a discriminator so the scheduled SLA loop can map
+// Payment_verification_failed and awaiting_dispatch are the two situations
+// the confirmation page promises a 24-hour follow-up email for.
+// Kept as a discriminator so the scheduled SLA loop can map
 // the backend's metadata.verificationFailureReason onto the right copy:
 //
 //   'dispatch_delayed' — Givebutter confirmed payment, only the Roadie courier

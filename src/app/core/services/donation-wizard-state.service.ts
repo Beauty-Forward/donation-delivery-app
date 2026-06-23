@@ -19,14 +19,14 @@ export interface WizardFormState {
 export type ConfirmationView = 'verifying' | 'success' | 'failed';
 
 // When confirmationView is 'failed', failureReason explains *why* so the wizard
-// can show truthful copy. The two awaiting_payment variants must NOT prompt the
+// can show truthful copy. The payment_verification_failed and awaiting_dispatch variants must NOT prompt the
 // donor to pay again, because they may have (or definitely have) already paid:
 //   - 'payment_verified_dispatch_failed': Givebutter confirmed payment, but the
 //     Roadie courier booking failed. We KNOW they paid — reassure them and tell
 //     them we'll confirm the pickup.
-//   - 'awaiting_payment': Givebutter's API was unreachable, so we can't yet tell
+//   - 'payment_verification_failed': Givebutter's API was unreachable, so we can't yet tell
 //     whether they paid. Acknowledge the request and say we're still confirming.
-//   - 'payment_verification_failed': Givebutter definitively found no payment.
+//   - 'payment_not_found': Givebutter definitively found no payment.
 //     This is a real "we couldn't confirm" — the Try-again CTA is correct here.
 // A null failureReason means there is no classified failure: either no failure at
 // all (success / fresh state), or the submission never returned a usable result
@@ -35,7 +35,7 @@ export type ConfirmationView = 'verifying' | 'success' | 'failed';
 // 'payment_verification_failed'.
 export type WizardFailureReason =
   | 'payment_verified_dispatch_failed'
-  | 'awaiting_payment'
+  | 'payment_not_found'
   | 'payment_verification_failed';
 
 export interface DonationWizardState {

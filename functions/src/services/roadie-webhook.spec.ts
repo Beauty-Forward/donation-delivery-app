@@ -50,6 +50,6 @@ describe('isForwardCourierTransition', () => {
 
   it('advances from any pre-courier / undefined status (rank -1)', () => {
     expect(isForwardCourierTransition(undefined, 'dispatch_requested')).toBe(true);
-    expect(isForwardCourierTransition('awaiting_payment', 'in_transit')).toBe(true);
+    expect(isForwardCourierTransition('payment_verification_failed', 'in_transit')).toBe(true);
   });
 });

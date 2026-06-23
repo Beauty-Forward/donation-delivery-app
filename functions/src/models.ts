@@ -3,7 +3,7 @@ export type DonationType = 'pickup' | 'shipping' | 'dropoff';
 export type DonationStatus =
   | 'submitted'
   | 'verifying_payment'
-  | 'awaiting_payment'
+  | 'payment_not_found'
   | 'payment_verification_failed'
   | 'queued_for_dispatch'
   | 'dispatch_requested'
