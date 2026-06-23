@@ -3,29 +3,25 @@ import { GivebutterService } from './givebutter.service.js';
 
 interface TxnSeed {
   id: string;
-  email?: string;
-  first_name?: string;
-  last_name?: string;
-  amount_paid?: number;
-  status?: string;
-  // ISO string; defaults to "now" so it falls inside any positive lookback window.
-  created_at?: string;
+  // Becomes utm_parameters.utm_campaign. Omit to simulate a transaction that did not
+  // come through our flow (a direct campaign donation) — those carry no UTM.
+  utmCampaign?: string;
+  amount?: number;
 }
 
-// Stub global.fetch to return a single page of transactions (last_page = 1 so the
-// service stops after one fetch). All seeds default to a recent, succeeded payment.
+// Stub global.fetch with one page of transactions. amount defaults above the $15
+// donation minimum, so a seeded transaction verifies unless a test says otherwise.
 function mockTransactions(seeds: TxnSeed[]): void {
-  const data = seeds.map((s) => ({
-    status: 'succeeded',
-    amount_paid: 25,
-    created_at: new Date().toISOString(),
-    ...s,
+  const data = seeds.map(({ id, utmCampaign, amount = 25 }) => ({
+    id,
+    amount,
+    utm_parameters: utmCampaign ? { utm_campaign: utmCampaign } : null,
   }));
   vi.stubGlobal(
     'fetch',
     vi.fn(
       async () =>
-        new Response(JSON.stringify({ data, meta: { current_page: 1, last_page: 1 } }), {
+        new Response(JSON.stringify({ data }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
@@ -35,7 +31,7 @@ function mockTransactions(seeds: TxnSeed[]): void {
 
 // apiKey must be non-empty or the service short-circuits to an error result.
 function makeService(): GivebutterService {
-  return new GivebutterService(undefined, 'https://api.test/v1', 'test-key');
+  return new GivebutterService('https://api.test/v1', 'test-key');
 }
 
 describe('GivebutterService.findRecentTransactionForDonor', () => {
@@ -43,375 +39,87 @@ describe('GivebutterService.findRecentTransactionForDonor', () => {
     vi.unstubAllGlobals();
   });
 
-  it('verifies via exact email match', async () => {
-    mockTransactions([
-      {
-        id: 'txn_1',
-        email: 'jane@gmail.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 25,
-      },
-    ]);
+  it('verifies the transaction whose utm_campaign matches the requestId', async () => {
+    mockTransactions([{ id: 'txn_1', utmCampaign: 'req_abc', amount: 25 }]);
 
-    const result = await makeService().findRecentTransactionForDonor(
-      'jane@gmail.com',
-      'Jane Donor',
-    );
+    const result = await makeService().findRecentTransactionForDonor('req_abc');
 
-    expect(result).toEqual({
-      outcome: 'verified',
-      amountUsd: 25,
-      transactionId: 'txn_1',
-      matchType: 'email',
-    });
+    expect(result).toEqual({ outcome: 'verified', amountUsd: 25, transactionId: 'txn_1' });
   });
 
-  it('email match is case-insensitive and whitespace-trimmed', async () => {
-    mockTransactions([{ id: 'txn_1', email: 'jane@gmail.com', amount_paid: 25 }]);
+  it('finds the matching requestId among unrelated transactions', async () => {
+    mockTransactions([
+      { id: 'txn_other', utmCampaign: 'req_zzz', amount: 50 },
+      { id: 'txn_mine', utmCampaign: 'req_abc', amount: 25 },
+    ]);
 
-    const result = await makeService().findRecentTransactionForDonor(
-      '  JANE@Gmail.com ',
-      'Jane Donor',
-    );
+    const result = await makeService().findRecentTransactionForDonor('req_abc');
 
     expect(result.outcome).toBe('verified');
-    if (result.outcome === 'verified') expect(result.matchType).toBe('email');
+    if (result.outcome === 'verified') expect(result.transactionId).toBe('txn_mine');
   });
 
-  it('falls back to name match when the email differs (typo / different account)', async () => {
-    // Donor paid under jane@gmail.com but typed jane@gmial.com in the wizard.
+  it('skips transactions with no utm_parameters without crashing', async () => {
+    // Most transactions on the campaign are direct donations with no UTM; the scan
+    // must step over them (optional chaining) rather than throwing.
     mockTransactions([
-      {
-        id: 'txn_1',
-        email: 'jane@gmail.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 30,
-      },
+      { id: 'txn_direct' }, // utm_parameters: null
+      { id: 'txn_mine', utmCampaign: 'req_abc', amount: 25 },
     ]);
 
-    const result = await makeService().findRecentTransactionForDonor(
-      'jane@gmial.com',
-      'Jane Donor',
-    );
-
-    expect(result).toEqual({
-      outcome: 'verified',
-      amountUsd: 30,
-      transactionId: 'txn_1',
-      matchType: 'name_fallback',
-    });
-  });
-
-  it('name match is case-insensitive and whitespace-normalized', async () => {
-    mockTransactions([
-      {
-        id: 'txn_1',
-        email: 'other@x.com',
-        first_name: 'jane',
-        last_name: 'donor',
-        amount_paid: 25,
-      },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor(
-      'wizard@x.com',
-      '  Jane   Donor ',
-    );
+    const result = await makeService().findRecentTransactionForDonor('req_abc');
 
     expect(result.outcome).toBe('verified');
-    if (result.outcome === 'verified') expect(result.matchType).toBe('name_fallback');
+    if (result.outcome === 'verified') expect(result.transactionId).toBe('txn_mine');
   });
 
-  // --- #119: order- and diacritic-insensitive name matching. Each case below is a
-  // row from the issue's false-negatives table that the v1 exact matcher missed. ---
+  it('rejects below_minimum when the matched transaction is under the donation minimum', async () => {
+    mockTransactions([{ id: 'txn_low', utmCampaign: 'req_abc', amount: 5 }]);
 
-  it('matches when the wizard name carries a middle name the GB record lacks', async () => {
-    mockTransactions([
-      {
-        id: 'txn_1',
-        email: 'other@x.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 25,
-      },
-    ]);
+    const result = await makeService().findRecentTransactionForDonor('req_abc');
 
-    const result = await makeService().findRecentTransactionForDonor(
-      'wizard@x.com',
-      'Jane Q Donor',
-    );
-
-    expect(result.outcome).toBe('verified');
-    if (result.outcome === 'verified') expect(result.matchType).toBe('name_fallback');
+    expect(result).toEqual({ outcome: 'rejected', reason: 'below_minimum' });
   });
 
-  it('matches when the wizard name has first/last reversed', async () => {
-    mockTransactions([
-      {
-        id: 'txn_1',
-        email: 'other@x.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 25,
-      },
-    ]);
+  it('rejects not_found when no transaction matches the requestId', async () => {
+    mockTransactions([{ id: 'txn_1', utmCampaign: 'req_other', amount: 25 }]);
 
-    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Donor Jane');
-
-    expect(result.outcome).toBe('verified');
-    if (result.outcome === 'verified') expect(result.matchType).toBe('name_fallback');
-  });
-
-  it('matches the "Last, First" comma form', async () => {
-    mockTransactions([
-      {
-        id: 'txn_1',
-        email: 'other@x.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 25,
-      },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Donor, Jane');
-
-    expect(result.outcome).toBe('verified');
-    if (result.outcome === 'verified') expect(result.matchType).toBe('name_fallback');
-  });
-
-  it('matches across accents/diacritics (José García == Jose Garcia)', async () => {
-    mockTransactions([
-      {
-        id: 'txn_1',
-        email: 'other@x.com',
-        first_name: 'José',
-        last_name: 'García',
-        amount_paid: 25,
-      },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Jose Garcia');
-
-    expect(result.outcome).toBe('verified');
-    if (result.outcome === 'verified') expect(result.matchType).toBe('name_fallback');
-  });
-
-  it('matches an uneven first/last split (Mary Anne Smith == Mary / Anne Smith)', async () => {
-    mockTransactions([
-      {
-        id: 'txn_1',
-        email: 'other@x.com',
-        first_name: 'Mary',
-        last_name: 'Anne Smith',
-        amount_paid: 25,
-      },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor(
-      'wizard@x.com',
-      'Mary Anne Smith',
-    );
-
-    expect(result.outcome).toBe('verified');
-    if (result.outcome === 'verified') expect(result.matchType).toBe('name_fallback');
-  });
-
-  it('does NOT match on a lone shared first name (guards against over-loosening)', async () => {
-    // Wizard supplied only "Jane"; GB record is "Jane Donor". A single shared token
-    // must not be enough to dispatch — otherwise any "Jane" would match.
-    mockTransactions([
-      {
-        id: 'txn_1',
-        email: 'other@x.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 25,
-      },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Jane');
+    const result = await makeService().findRecentTransactionForDonor('req_abc');
 
     expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
   });
 
-  it('still rejects genuinely different names that share no tokens', async () => {
-    mockTransactions([
-      { id: 'txn_1', email: 'other@x.com', first_name: 'Bob', last_name: 'Smith', amount_paid: 25 },
-    ]);
+  it('returns an error when the API key is not configured', async () => {
+    const result = await new GivebutterService(
+      'https://api.test/v1',
+      '',
+    ).findRecentTransactionForDonor('req_abc');
 
-    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Jane Donor');
-
-    expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
-  });
-
-  it('keeps the ambiguity guard under loosened matching (diacritic variants, distinct emails)', async () => {
-    // Two distinct donors whose names both normalize to "jose garcia" — still too
-    // ambiguous to auto-dispatch even though the loosened matcher now hits both.
-    mockTransactions([
-      {
-        id: 'txn_a',
-        email: 'jose.a@x.com',
-        first_name: 'José',
-        last_name: 'García',
-        amount_paid: 25,
-      },
-      {
-        id: 'txn_b',
-        email: 'jose.b@y.com',
-        first_name: 'Jose',
-        last_name: 'Garcia',
-        amount_paid: 25,
-      },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor('wizard@x.com', 'Jose Garcia');
-
-    expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
-  });
-
-  it('rejects when neither email nor name match', async () => {
-    mockTransactions([
-      {
-        id: 'txn_1',
-        email: 'someone@else.com',
-        first_name: 'Bob',
-        last_name: 'Smith',
-        amount_paid: 25,
-      },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor(
-      'jane@gmail.com',
-      'Jane Donor',
-    );
-
-    expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
-  });
-
-  it('prefers the email match even when a name-only match also exists', async () => {
-    mockTransactions([
-      // Name match under a different email appears first (more recent)...
-      {
-        id: 'txn_name',
-        email: 'imposter@x.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 99,
-      },
-      // ...but the real email match should win.
-      {
-        id: 'txn_email',
-        email: 'jane@gmail.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 25,
-      },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor(
-      'jane@gmail.com',
-      'Jane Donor',
-    );
-
-    expect(result.outcome).toBe('verified');
-    if (result.outcome === 'verified') {
-      expect(result.transactionId).toBe('txn_email');
-      expect(result.matchType).toBe('email');
-    }
-  });
-
-  it('rejects ambiguous name matches across two distinct emails', async () => {
-    // Two different people named "Jane Donor", neither matching the wizard email.
-    mockTransactions([
-      {
-        id: 'txn_a',
-        email: 'jane.a@x.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 25,
-      },
-      {
-        id: 'txn_b',
-        email: 'jane.b@y.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 25,
-      },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor(
-      'jane@gmail.com',
-      'Jane Donor',
-    );
-
-    expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
-  });
-
-  it('treats two donations from the same non-matching email as a single (non-ambiguous) name match', async () => {
-    mockTransactions([
-      {
-        id: 'txn_new',
-        email: 'jane.work@x.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 40,
-      },
-      {
-        id: 'txn_old',
-        email: 'jane.work@x.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 25,
-      },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor(
-      'jane@gmail.com',
-      'Jane Donor',
-    );
-
-    expect(result.outcome).toBe('verified');
-    if (result.outcome === 'verified') {
-      // First (most recent) transaction for that email wins.
-      expect(result.transactionId).toBe('txn_new');
-      expect(result.matchType).toBe('name_fallback');
-    }
-  });
-
-  it('ignores name matches below the donation minimum', async () => {
-    mockTransactions([
-      {
-        id: 'txn_low',
-        email: 'other@x.com',
-        first_name: 'Jane',
-        last_name: 'Donor',
-        amount_paid: 5,
-      },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor(
-      'jane@gmail.com',
-      'Jane Donor',
-    );
-
-    expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
-  });
-
-  it('does not name-match when the donor name is empty', async () => {
-    mockTransactions([
-      { id: 'txn_1', email: 'other@x.com', first_name: '', last_name: '', amount_paid: 25 },
-    ]);
-
-    const result = await makeService().findRecentTransactionForDonor('jane@gmail.com', '   ');
-
-    expect(result).toEqual({ outcome: 'rejected', reason: 'not_found' });
-  });
-
-  it('returns an error result when the API key is not configured', async () => {
-    const svc = new GivebutterService(undefined, 'https://api.test/v1', '');
-    const result = await svc.findRecentTransactionForDonor('jane@gmail.com', 'Jane Donor');
     expect(result).toEqual({ outcome: 'error', reason: 'givebutter_api_key_not_configured' });
+  });
+
+  it('returns an error when the API responds non-OK', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 500 })),
+    );
+
+    const result = await makeService().findRecentTransactionForDonor('req_abc');
+
+    expect(result).toEqual({ outcome: 'error', reason: 'givebutter_http_500' });
+  });
+
+  it('returns an error when the fetch throws', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network down');
+      }),
+    );
+
+    const result = await makeService().findRecentTransactionForDonor('req_abc');
+
+    expect(result).toEqual({ outcome: 'error', reason: 'givebutter_failure' });
   });
 });
