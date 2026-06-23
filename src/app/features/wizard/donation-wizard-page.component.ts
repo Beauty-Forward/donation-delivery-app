@@ -113,6 +113,7 @@ export class DonationWizardPageComponent {
   // explicitly call cdr.markForCheck()/detectChanges() after any state mutation
   // that needs to land in the template.
   private readonly cdr = inject(ChangeDetectorRef);
+  private requestId: string | null = null;
 
   protected readonly bfEmail = environment.email;
   protected readonly nycCities = NYC_CITIES;
@@ -588,7 +589,9 @@ export class DonationWizardPageComponent {
     const next = this.afterDetailsStep;
 
     if (next === 4) {
-      void this.transitionRoute('/pickup', 4, false);
+      this.requestId = crypto.randomUUID();
+      this.transitionRoute(`/pickup?utm_campaign=${this.requestId}`, 4, false);
+
       return;
     }
 
@@ -772,7 +775,7 @@ export class DonationWizardPageComponent {
     // this same object directly to Firestore. So we omit the field entirely when we
     // don't have a value, rather than setting it to undefined.
     const payload: CreateDonationRequestPayload = {
-      requestId: crypto.randomUUID(),
+      requestId: this.requestId || crypto.randomUUID(),
       donationType,
       donor: {
         fullName,
@@ -1100,6 +1103,7 @@ export class DonationWizardPageComponent {
     this.confirmationView = state.confirmationView;
     this.failureReason = state.failureReason;
     this.verifiedAmountUsd = state.verifiedAmountUsd;
+    this.requestId = state.requestId;
     this.ensureMethodDefaults();
   }
 
@@ -1119,6 +1123,7 @@ export class DonationWizardPageComponent {
       confirmationView: this.confirmationView,
       failureReason: this.failureReason,
       verifiedAmountUsd: this.verifiedAmountUsd,
+      requestId: this.requestId,
     };
   }
 

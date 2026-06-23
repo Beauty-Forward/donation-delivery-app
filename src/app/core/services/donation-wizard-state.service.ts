@@ -53,6 +53,7 @@ export interface DonationWizardState {
   confirmationView: ConfirmationView;
   failureReason: WizardFailureReason | null;
   verifiedAmountUsd: number | null;
+  requestId: string | null;
 }
 
 export const DEFAULT_WIZARD_FORM_STATE: WizardFormState = {
@@ -84,6 +85,7 @@ export const DEFAULT_DONATION_WIZARD_STATE: DonationWizardState = {
   confirmationView: 'verifying',
   failureReason: null,
   verifiedAmountUsd: null,
+  requestId: null,
 };
 
 @Injectable({

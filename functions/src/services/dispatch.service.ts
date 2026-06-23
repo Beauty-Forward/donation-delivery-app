@@ -1,6 +1,6 @@
 import type { DonorInfo, PickupDetails } from '../models.js';
 import type { RoadieCourierService } from './roadie.service.js';
-import { GivebutterService, type VerificationMatchType } from './givebutter.service.js';
+import { GivebutterService } from './givebutter.service.js';
 
 export type VerifyAndDispatchResult =
   | {
@@ -8,13 +8,11 @@ export type VerifyAndDispatchResult =
       courierDispatchId: string;
       verifiedAmountUsd: number;
       verificationTransactionId: string;
-      verificationMatchType: VerificationMatchType | 'skipped';
     }
   | {
       status: 'awaiting_dispatch';
       verifiedAmountUsd: number;
       verificationTransactionId: string;
-      verificationMatchType: VerificationMatchType;
       failureReason: string;
     }
   | { status: 'payment_not_found'; failureReason: string }
@@ -43,14 +41,10 @@ export async function verifyAndDispatchPickup(
       courierDispatchId: dispatch.dispatchId,
       verifiedAmountUsd: 0, // Hardcoded at 0 because we run this path locally for testing. Re-review if we ever wanted to allow this in prod.
       verificationTransactionId: 'dev_skip_verification',
-      verificationMatchType: 'skipped',
     };
   }
 
-  const verification = await deps.givebutterService.findRecentTransactionForDonor(
-    donor.email,
-    donor.fullName,
-  );
+  const verification = await deps.givebutterService.findRecentTransactionForDonor(requestId);
 
   if (verification.outcome === 'verified') {
     try {
@@ -64,7 +58,6 @@ export async function verifyAndDispatchPickup(
         courierDispatchId: dispatch.dispatchId,
         verifiedAmountUsd: verification.amountUsd,
         verificationTransactionId: verification.transactionId,
-        verificationMatchType: verification.matchType,
       };
     } catch (err) {
       console.error('Courier dispatch failed after verification', { requestId, err });
@@ -72,7 +65,6 @@ export async function verifyAndDispatchPickup(
         status: 'awaiting_dispatch',
         verifiedAmountUsd: verification.amountUsd,
         verificationTransactionId: verification.transactionId,
-        verificationMatchType: verification.matchType,
         failureReason: 'courier_dispatch_failed',
       };
     }

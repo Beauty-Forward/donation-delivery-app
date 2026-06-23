@@ -35,7 +35,6 @@ import { defineSecret } from 'firebase-functions/params';
 import { isCallableOwnedDoc } from './dispatch-routing.js';
 import { isAlreadyExistsError } from './firestore-utils.js';
 import {
-  CreateContributionSessionPayload,
   CreateDonationRequestPayload,
   DonationStatus,
   DonationSubmissionResult,
@@ -52,11 +51,7 @@ import { HubspotService } from './services/hubspot.service.js';
 import { ResendEmailService } from './services/resend.service.js';
 import { verifyAndDispatchPickup, VerifyAndDispatchResult } from './services/dispatch.service.js';
 import { WAREHOUSE_ADDRESS } from './warehouse.js';
-import {
-  createContributionSessionSchema,
-  createDonationRequestSchema,
-  getPickupDonationMinUsd,
-} from './validators.js';
+import { createDonationRequestSchema, getPickupDonationMinUsd } from './validators.js';
 
 initializeApp();
 
@@ -155,13 +150,11 @@ function getVerificationMetadata(v: VerifyAndDispatchResult) {
         courierDispatchId: v.courierDispatchId,
         verificationTransactionId: v.verificationTransactionId,
         verifiedAmountUsd: v.verifiedAmountUsd,
-        verificationMatchType: v.verificationMatchType,
       };
     case 'awaiting_dispatch':
       return {
         verificationTransactionId: v.verificationTransactionId,
         verifiedAmountUsd: v.verifiedAmountUsd,
-        verificationMatchType: v.verificationMatchType,
       };
     case 'payment_not_found':
     case 'payment_verification_failed':
@@ -377,17 +370,6 @@ export const createDonationRequest = onCall(
     } satisfies DonationSubmissionResult;
   },
 );
-
-export const createContributionSession = onCall({ region: 'us-central1' }, async (request) => {
-  const parsed = createContributionSessionSchema.safeParse(request.data);
-
-  if (!parsed.success) {
-    throw new HttpsError('invalid-argument', parsed.error.flatten().formErrors.join(' '));
-  }
-
-  const payload = parsed.data as CreateContributionSessionPayload;
-  return givebutterService.createCheckoutSession(payload);
-});
 
 // Authoritative pickup payment gate. Fires on every donation_requests doc create.
 // For pickup, looks up Givebutter transactions by donor email + recency window,
