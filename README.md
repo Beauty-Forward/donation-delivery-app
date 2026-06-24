@@ -1,6 +1,6 @@
 # Beauty Forward Donation Logistics
 
-Public-facing donation logistics app: donors schedule a courier pickup, ship products to the warehouse themselves, or reserve a drop-off slot. Built with Angular + Firebase, with real integrations for courier dispatch (Roadie), donations (Givebutter), CRM (HubSpot), and transactional email (Resend).
+Public-facing donation logistics app: donors schedule a courier pickup, ship products to the warehouse themselves, or reserve a drop-off slot. Built with Angular + Firebase, with real integrations for courier dispatch (Roadie), donations (Givebutter), and transactional email (Resend).
 
 **Live:** https://donation-delivery-app--beauty-forward.us-east4.hosted.app/
 
@@ -19,7 +19,7 @@ No authentication is required. The data model leaves room for accounts (`donorAc
 - **Frontend:** Angular 21 + TypeScript (standalone components), mobile-first SCSS
 - **Backend:** Firebase Cloud Functions v2 (single `donor` codebase), TypeScript
 - **Data:** Firestore
-- **Integrations:** Roadie (courier), Givebutter (donations), HubSpot (CRM), Resend (email)
+- **Integrations:** Roadie (courier), Givebutter (donations), Resend (email)
 - **Tests:** Vitest (functions), Karma/Jasmine via `ng test` (frontend)
 
 ## Architecture at a Glance
@@ -33,7 +33,6 @@ Cloud Functions ──► Firestore (donation_requests + type-specific collectio
    │                     └─ onDocumentCreated ──► verifyContributionAndDispatch (backstop)
    ├─► Givebutter  (verify contribution against /v1/transactions)
    ├─► Roadie      (book courier for verified pickups)
-   ├─► HubSpot     (upsert donor contact)
    └─► Resend      (confirmation email)
 ```
 
@@ -67,7 +66,7 @@ functions/src/
 ├── dispatch-routing.ts   # routing guard for the verify+dispatch trigger
 ├── firestore-utils.ts
 ├── warehouse.ts
-├── services/             # roadie, givebutter, hubspot, resend, dispatch
+├── services/             # roadie, givebutter, resend, dispatch
 ├── email/templates/      # base-layout + pickup/shipping/dropoff/recovery emails
 └── utils/dropoff-reference.ts
 
@@ -147,10 +146,6 @@ All in `functions/src/index.ts`, region `us-central1`, codebase `donor`:
 - `GivebutterService` verifies contributions **server-to-server** against Givebutter's `/v1/transactions` endpoint (matching donor email + amount within a lookback window) before dispatch.
 - Checkout **session creation** is still a URL builder, not a real Givebutter session API call (tracked in the v2 backlog).
 
-### HubSpot (CRM)
-
-- `HubSpotService` upserts the donor as a contact on submission. No-ops with a warning if `HUBSPOT_SERVICE_KEY` is unset.
-
 ### Resend (email)
 
 - `ResendService` sends pickup / shipping / drop-off confirmation emails (templates in `functions/src/email/templates/`). No-ops with a warning if `RESEND_API_KEY` is unset, so the happy path never breaks in unconfigured environments.
@@ -167,7 +162,7 @@ every variable). Highlights:
 - `ROADIE_API_BASE_URL`, `WAREHOUSE_CONTACT_NAME`, `WAREHOUSE_CONTACT_PHONE`
 - `GIVEBUTTER_CAMPAIGN_URL`, `GIVEBUTTER_API_KEY`
 - `PICKUP_DONATION_MIN_USD` — minimum verified contribution to unlock pickup dispatch
-- `HUBSPOT_SERVICE_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`
+- `RESEND_API_KEY`, `RESEND_FROM_EMAIL`
 - Local-only escape hatches (`.env.local`): `SKIP_GIVEBUTTER_VERIFICATION`, `FIRESTORE_EMULATOR_HOST`
 
 > `.env` is deployed to Cloud Functions (no secrets); `.env.local` is never deployed.

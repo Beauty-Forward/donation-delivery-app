@@ -52,7 +52,3 @@ Thumbs.db
 
 # AI
 .claude
-
-# HubSpot CLI config — contains a personalAccessKey / OAuth token, never commit
-hubspot.config.yml
-hubspot.config*.yml

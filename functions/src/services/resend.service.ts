@@ -1,5 +1,5 @@
 // Thin Resend API client. Sends transactional confirmation emails via the
-// Resend HTTP API. Raw fetch matches the HubspotService / Roadie pattern;
+// Resend HTTP API. Raw fetch matches the Roadie pattern;
 // the templates themselves live in ../email.
 //
 // Reference: https://resend.com/docs/api-reference/emails/send-email

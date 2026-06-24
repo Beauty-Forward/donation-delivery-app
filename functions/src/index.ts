@@ -47,7 +47,6 @@ import {
   roadieEventToStatus,
 } from './services/roadie.service.js';
 import { GivebutterService } from './services/givebutter.service.js';
-import { HubspotService } from './services/hubspot.service.js';
 import { ResendEmailService } from './services/resend.service.js';
 import { verifyAndDispatchPickup, VerifyAndDispatchResult } from './services/dispatch.service.js';
 import { WAREHOUSE_ADDRESS } from './warehouse.js';
@@ -79,7 +78,6 @@ function getCourierService(): RoadieCourierService {
   return _courierService;
 }
 const givebutterService = new GivebutterService();
-const hubspotService = new HubspotService();
 const resendEmailService = new ResendEmailService();
 
 // Send an email at most once per donation_request, keyed by a named flag on the
@@ -327,36 +325,6 @@ export const createDonationRequest = onCall(
         );
       }
     }
-
-    const metaCity =
-      typeof payload.metadata?.['city'] === 'string'
-        ? (payload.metadata['city'] as string)
-        : undefined;
-    const metaState =
-      typeof payload.metadata?.['state'] === 'string'
-        ? (payload.metadata['state'] as string)
-        : undefined;
-    const city =
-      metaCity ?? payload.pickup?.pickupAddress?.city ?? payload.shipping?.senderAddress?.city;
-    const state =
-      metaState ?? payload.pickup?.pickupAddress?.state ?? payload.shipping?.senderAddress?.state;
-    const packageSize =
-      typeof payload.metadata?.['packageSize'] === 'string'
-        ? (payload.metadata['packageSize'] as string)
-        : undefined;
-
-    await hubspotService
-      .upsertDonorContact({
-        email: payload.donor.email,
-        fullName: payload.donor.fullName,
-        phone: payload.donor.phone,
-        donationMethod: payload.donationType,
-        donationAmountUsd: payload.contribution.amountUsd,
-        city,
-        state,
-        packageSize,
-      })
-      .catch((err) => console.warn('HubSpot upsert failed', err));
 
     return {
       requestId: requestRef.id,
@@ -769,31 +737,6 @@ export const handleGivebutterWebhook = onRequest(
           requestId,
           completedAmount,
         });
-      }
-
-      if (data?.['donor']?.email) {
-        const meta = data?.['metadata'] ?? {};
-        const docCity =
-          (typeof meta['city'] === 'string' ? meta['city'] : undefined) ??
-          data?.['pickup']?.pickupAddress?.city ??
-          data?.['shipping']?.senderAddress?.city;
-        const docState =
-          (typeof meta['state'] === 'string' ? meta['state'] : undefined) ??
-          data?.['pickup']?.pickupAddress?.state ??
-          data?.['shipping']?.senderAddress?.state;
-        await hubspotService
-          .upsertDonorContact({
-            email: data['donor'].email,
-            fullName: data['donor'].fullName ?? '',
-            phone: data['donor'].phone ?? '',
-            donationMethod: data['donationType'],
-            donationAmountUsd: completedAmount,
-            city: docCity,
-            state: docState,
-            packageSize: typeof meta['packageSize'] === 'string' ? meta['packageSize'] : undefined,
-            refreshOnly: true,
-          })
-          .catch((err) => console.warn('HubSpot webhook upsert failed', err));
       }
     }
 
