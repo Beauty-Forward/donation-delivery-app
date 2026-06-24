@@ -211,7 +211,10 @@ describe('ResendEmailService', () => {
     expect(body.from).toBe('info@beauty-forward.org');
   });
 
-  it('throws when Resend returns a non-OK status', async () => {
+  it('logs but does not throw when Resend returns a non-OK status', async () => {
+    // Email is best-effort: a non-OK response is logged, not thrown, so a Resend
+    // failure can't fail the donation flow.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { fn } = makeFetchMock([{ status: 422, body: { message: 'invalid recipient' } }]);
     const service = new ResendEmailService(
       'test-key',
@@ -227,6 +230,9 @@ describe('ResendEmailService', () => {
         pickup: PICKUP,
         nextSteps: [],
       }),
-    ).rejects.toThrow(/Resend send failed: 422/);
+    ).resolves.toBeUndefined();
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/Resend send failed: 422/));
+    errorSpy.mockRestore();
   });
 });

@@ -10,16 +10,11 @@ export type GivebutterVerification =
   | { outcome: 'error'; reason: string };
 
 export class GivebutterService {
-  private readonly apiBaseUrl: string;
-  private readonly apiKey: string;
-
   constructor(
-    apiBaseUrl = process.env['GIVEBUTTER_API_BASE_URL'] ?? 'https://api.givebutter.com/v1',
-    apiKey = process.env['GIVEBUTTER_API_KEY'] ?? '',
-  ) {
-    this.apiBaseUrl = apiBaseUrl;
-    this.apiKey = apiKey;
-  }
+    private readonly apiBaseUrl: string = process.env['GIVEBUTTER_API_BASE_URL'] ??
+      'https://api.givebutter.com/v1',
+    private readonly apiKey: string = process.env['GIVEBUTTER_API_KEY'] ?? '',
+  ) {}
 
   async findRecentTransactionForDonor(requestId: string): Promise<GivebutterVerification> {
     if (!this.apiKey) {
