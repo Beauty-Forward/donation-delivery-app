@@ -31,6 +31,7 @@ import {
 } from '../../core/models/donation.models';
 import { environment } from '../../../environments/environment';
 import { NYC_CITIES, US_STATES } from '../../core/constants/us-states';
+import { WAREHOUSE_INSTRUCTIONS } from '../../core/constants/warehouse';
 
 // The Givebutter widget script (loaded in src/index.html) installs a global queueing
 // function `window.Givebutter(...)` exposing addEventListener / EVENT constants.
@@ -806,8 +807,9 @@ export class DonationWizardPageComponent {
         pickupAddress: this.buildDonorAddress(donorCity, donorState),
         preferredDate: this.selectedDate ?? '',
         preferredTimeWindow: this.selectedTime ?? '',
-        courierNotes: this.form.courierNotes || undefined,
+        courierNotes: this.form.courierNotes,
         warehouseAddress,
+        warehouseDeliveryInstructions: WAREHOUSE_INSTRUCTIONS,
       };
     } else if (donationType === 'dropoff') {
       payload.dropoff = {

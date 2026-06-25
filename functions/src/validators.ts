@@ -14,7 +14,6 @@ const addressSchema = z.object({
   city: z.string().min(2),
   state: z.string().min(2).max(2),
   postalCode: z.string().min(5),
-  instructions: z.string().optional(),
 });
 
 const donorSchema = z.object({
@@ -36,8 +35,9 @@ const pickupSchema = z.object({
   pickupAddress: addressSchema,
   preferredDate: z.string().min(4),
   preferredTimeWindow: z.string().min(4),
-  courierNotes: z.string().optional(),
+  courierNotes: z.string(),
   warehouseAddress: addressSchema,
+  warehouseDeliveryInstructions: z.string(),
 });
 
 const shippingSchema = z.object({

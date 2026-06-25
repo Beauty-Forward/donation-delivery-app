@@ -31,14 +31,14 @@ export async function verifyAndDispatchPickup(
 ): Promise<VerifyAndDispatchResult> {
   if (process.env['SKIP_GIVEBUTTER_VERIFICATION'] === 'true') {
     console.warn('[dev] SKIP_GIVEBUTTER_VERIFICATION is on; auto-verifying pickup', { requestId });
-    const dispatch = await deps.courierService.dispatchPickup({
+    const dispatchId = await deps.courierService.dispatchPickup({
       requestId,
       donor,
       pickup,
     });
     return {
       status: 'queued_for_dispatch',
-      courierDispatchId: dispatch.dispatchId,
+      courierDispatchId: dispatchId,
       verifiedAmountUsd: 0, // Hardcoded at 0 because we run this path locally for testing. Re-review if we ever wanted to allow this in prod.
       verificationTransactionId: 'dev_skip_verification',
     };
@@ -48,14 +48,14 @@ export async function verifyAndDispatchPickup(
 
   if (verification.outcome === 'verified') {
     try {
-      const dispatch = await deps.courierService.dispatchPickup({
+      const dispatchId = await deps.courierService.dispatchPickup({
         requestId,
         donor,
         pickup,
       });
       return {
         status: 'queued_for_dispatch',
-        courierDispatchId: dispatch.dispatchId,
+        courierDispatchId: dispatchId,
         verifiedAmountUsd: verification.amountUsd,
         verificationTransactionId: verification.transactionId,
       };

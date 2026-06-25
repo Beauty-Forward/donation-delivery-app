@@ -1,110 +1,31 @@
 import {
   AddressInfo,
   CourierDispatchInput,
-  CourierDispatchResult,
-  DonationStatus,
-  PickupDetails,
+  RoadieAddress,
+  RoadieShipmentPayload,
 } from '../models.js';
-
-// Maps an inbound Roadie webhook `event` string to the donation status it should
-// advance the doc to, or null for events we receive but don't act on (e.g.
-// tracking pings, grouping notices). Events are namespaced `shipment.*`; see
-// https://docs.roadie.com/. The happy path is:
-//   driver_assigned → en_route/at/pickup_confirmed → delivery_confirmed
-// and canceled / returned / delivery_attempted are terminal failures.
-//
-// Status is only ever advanced forward by the caller (a delivered doc ignores a
-// late en_route ping), so the absolute ordering here doesn't need to be encoded.
-export function roadieEventToStatus(event: string): DonationStatus | null {
-  switch (event) {
-    case 'shipment.driver_assigned':
-      return 'dispatch_requested';
-    case 'shipment.en_route_to_pickup':
-    case 'shipment.at_pickup':
-    case 'shipment.pickup_confirmed':
-    case 'shipment.en_route_to_delivery':
-    case 'shipment.at_delivery':
-      return 'in_transit';
-    case 'shipment.delivery_confirmed':
-    case 'shipment.delivery_confirmed_with_details':
-      return 'delivered';
-    case 'shipment.canceled':
-    case 'shipment.returned':
-    case 'shipment.delivery_attempted':
-      return 'delivery_failed';
-    default:
-      return null;
-  }
-}
-
-// Rank of each courier status along the pickup lifecycle. The webhook only moves
-// a doc forward, so an out-of-order or duplicate event (Roadie may redeliver, and
-// events can arrive out of sequence) can't regress a delivered donation back to
-// in_transit. Statuses outside this map (e.g. pre-dispatch states) rank -1, so any
-// courier event will advance them.
-const COURIER_STATUS_RANK: Partial<Record<DonationStatus, number>> = {
-  queued_for_dispatch: 0,
-  dispatch_requested: 1,
-  in_transit: 2,
-  delivered: 3,
-  delivery_failed: 3,
-};
-
-// True if `next` is a forward (or terminal-correcting) transition from `current`.
-// delivery_failed and delivered share the top rank: whichever lands first wins and
-// neither can overwrite the other, so a delivered donation can't later flip to
-// failed on a stray returned event, and vice versa.
-export function isForwardCourierTransition(
-  current: DonationStatus | undefined,
-  next: DonationStatus,
-): boolean {
-  const currentRank = current != null ? (COURIER_STATUS_RANK[current] ?? -1) : -1;
-  const nextRank = COURIER_STATUS_RANK[next] ?? -1;
-  return nextRank > currentRank;
-}
-
-interface RoadieShipmentResponse {
-  id?: string | number;
-  status?: string;
-  pickup_after?: string;
-  deliver_between?: { start?: string; end?: string };
-}
+import {
+  WAREHOUSE_CONTACT_NAME,
+  WAREHOUSE_CONTACT_PHONE,
+  WAREHOUSE_INSTRUCTIONS,
+} from '../warehouse.js';
 
 export class RoadieCourierService {
-  private readonly apiKey: string;
-  private readonly apiBaseUrl: string;
-  private readonly dispatchTimeoutMs: number;
-  private readonly warehouseContactName: string;
-  private readonly warehouseContactPhone: string;
-  private readonly fetchImpl: typeof fetch;
-
   constructor(
-    apiKey: string = process.env['ROADIE_API_KEY'] ?? '',
-    apiBaseUrl: string = process.env['ROADIE_API_BASE_URL'] ??
+    private readonly apiKey: string = process.env['ROADIE_API_KEY'] ?? '',
+    private readonly apiBaseUrl: string = process.env['ROADIE_API_BASE_URL'] ??
       'https://connect-sandbox.roadie.com/v1',
-    dispatchTimeoutMs = 10000,
-    warehouseContactName: string = process.env['WAREHOUSE_CONTACT_NAME'] ??
-      'Beauty Forward Warehouse',
-    warehouseContactPhone: string = process.env['WAREHOUSE_CONTACT_PHONE'] ?? '',
-    fetchImpl: typeof fetch = fetch,
-  ) {
-    this.apiKey = apiKey;
-    this.apiBaseUrl = apiBaseUrl;
-    this.dispatchTimeoutMs = dispatchTimeoutMs;
-    this.warehouseContactName = warehouseContactName;
-    this.warehouseContactPhone = warehouseContactPhone;
-    this.fetchImpl = fetchImpl;
-  }
+    private readonly dispatchTimeoutMs: number = 10000,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
 
-  async dispatchPickup(input: CourierDispatchInput): Promise<CourierDispatchResult> {
+  // returns the dispatch id
+  async dispatchPickup(input: CourierDispatchInput): Promise<string> {
     if (!this.apiKey) {
       throw new Error('ROADIE_API_KEY not configured');
     }
 
-    const body = buildShipmentPayload(input, {
-      warehouseContactName: this.warehouseContactName,
-      warehouseContactPhone: this.warehouseContactPhone,
-    });
+    const body = buildShipmentPayload(input);
 
     const url = `${this.apiBaseUrl}/shipments`;
     const controller = new AbortController();
@@ -123,16 +44,12 @@ export class RoadieCourierService {
       });
 
       const text = await res.text();
-      // Idempotent duplicate: a prior request with the same idempotency_key
-      // already created this shipment. Treat as success — do NOT book again or
-      // fail the donation. We don't get the original shipment id back here, so
-      // we return an empty dispatchId; the caller's `courierDispatchId ? ...`
-      // guards drop it, preserving the id recorded by the first (200) dispatch.
+
       if (res.status === 409) {
         console.warn('[roadie] duplicate shipment (409); treating as already dispatched', {
           requestId: input.requestId,
         });
-        return { service: 'roadie', dispatchId: '', status: 'queued', etaWindow: '' };
+        return '';
       }
       if (!res.ok) {
         throw new Error(
@@ -140,18 +57,10 @@ export class RoadieCourierService {
         );
       }
 
-      const parsed = (text ? JSON.parse(text) : {}) as RoadieShipmentResponse;
-      const dispatchId = parsed.id != null ? String(parsed.id) : '';
-      if (!dispatchId) {
-        throw new Error('Roadie response missing shipment id');
-      }
+      const parsed = JSON.parse(text);
+      if (!parsed.id) throw new Error('Roadie response missing shipment id');
 
-      return {
-        service: 'roadie',
-        dispatchId,
-        status: parsed.status === 'assigned' ? 'assigned' : 'queued',
-        etaWindow: formatEtaWindow(parsed, input.pickup),
-      };
+      return String(parsed.id);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         throw new Error('Roadie create-shipment timed out');
@@ -163,13 +72,8 @@ export class RoadieCourierService {
   }
 }
 
-interface PayloadOptions {
-  warehouseContactName: string;
-  warehouseContactPhone: string;
-}
-
 // POST /shipments as per Roadie documentation
-export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadOptions) {
+export function buildShipmentPayload(input: CourierDispatchInput): RoadieShipmentPayload {
   const { requestId, donor, pickup } = input;
   const { pickupAfter, deliverStart, deliverEnd } = buildTimeWindow(
     pickup.preferredDate,
@@ -192,7 +96,7 @@ export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadO
     ],
     pickup_location: {
       address: toRoadieAddress(pickup.pickupAddress),
-      notes: pickup.courierNotes ?? undefined,
+      notes: pickup.courierNotes,
       contact: {
         name: donor.fullName,
         phone: donor.phone,
@@ -200,10 +104,10 @@ export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadO
     },
     delivery_location: {
       address: toRoadieAddress(pickup.warehouseAddress),
-      notes: pickup.warehouseAddress.instructions ?? undefined,
+      notes: WAREHOUSE_INSTRUCTIONS,
       contact: {
-        name: opts.warehouseContactName,
-        phone: opts.warehouseContactPhone,
+        name: WAREHOUSE_CONTACT_NAME,
+        phone: WAREHOUSE_CONTACT_PHONE,
       },
     },
     pickup_after: pickupAfter.toISOString(),
@@ -221,7 +125,7 @@ export function buildShipmentPayload(input: CourierDispatchInput, opts: PayloadO
   };
 }
 
-function toRoadieAddress(addr: AddressInfo) {
+function toRoadieAddress(addr: AddressInfo): RoadieAddress {
   return {
     street1: addr.line1,
     street2: addr.line2 ?? undefined,
@@ -342,11 +246,4 @@ function to24Hour(hour: number, meridiem?: string): number | null {
   if (m === 'pm' && hour < 12) return hour + 12;
   if (m === 'am' && hour === 12) return 0;
   return hour;
-}
-
-function formatEtaWindow(parsed: RoadieShipmentResponse, pickup: PickupDetails): string {
-  if (parsed.deliver_between?.start && parsed.deliver_between?.end) {
-    return `${parsed.deliver_between.start} – ${parsed.deliver_between.end}`;
-  }
-  return `${pickup.preferredDate} ${pickup.preferredTimeWindow}`;
 }

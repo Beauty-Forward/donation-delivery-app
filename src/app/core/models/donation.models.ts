@@ -28,7 +28,6 @@ export interface AddressInfo {
   city: string;
   state: string;
   postalCode: string;
-  instructions?: string;
 }
 
 export interface WarehouseDestination {
@@ -51,8 +50,9 @@ export interface PickupDetails {
   pickupAddress: AddressInfo;
   preferredDate: string;
   preferredTimeWindow: string;
-  courierNotes?: string;
+  courierNotes: string;
   warehouseAddress: AddressInfo;
+  warehouseDeliveryInstructions: string;
 }
 
 export interface ShippingDetails {

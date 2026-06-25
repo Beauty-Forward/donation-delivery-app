@@ -3,7 +3,7 @@ import { WarehouseDestination } from '../models/donation.models';
 import { environment } from '../../../environments/environment';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class WarehouseConfigService {
   readonly destination: WarehouseDestination = {
@@ -14,9 +14,8 @@ export class WarehouseConfigService {
       city: environment.warehouse.city,
       state: environment.warehouse.state,
       postalCode: environment.warehouse.postalCode,
-      instructions: environment.warehouse.deliveryNotes
     },
-    deliveryNotes: environment.warehouse.deliveryNotes
+    deliveryNotes: environment.warehouse.deliveryNotes,
   };
 
   get formattedAddress(): string {
