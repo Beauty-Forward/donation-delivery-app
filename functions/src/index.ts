@@ -1,33 +1,16 @@
-// Force-load functions/.env into process.env at module load. The firebase-functions
-// emulator does not reliably propagate env vars to the worker process; in prod the
-// .env file doesn't exist, so dotenv silently no-ops and Cloud Functions' built-in
-// env handling takes over.
-//
-// Explicit path: dotenv defaults to `${cwd}/.env`, but the emulator runs with cwd at
-// the firebase project root (parent of functions/), so a path-less call would miss
-// our file. We resolve relative to this module — works whether the JS is at lib/ or
-// transpiled elsewhere.
+// Force-load functions/.env into process.env at module load
 import { config as loadDotenv } from 'dotenv';
 import { join } from 'path';
+
 // .env.local — emulator-only overrides (sandbox creds, dev escape hatches).
-// CRITICAL: only load it under the emulator. Firebase still SHIPS this file in
-// the deploy bundle (it merely skips it for its own env injection), so loading
-// it in prod with override:true would clobber the real ROADIE_API_KEY injected
-// from Secret Manager and the production base URL — silently putting prod into
-// sandbox mode with verification disabled. The FUNCTIONS_EMULATOR guard keeps
-// it strictly local; firebase.json `functions.ignore` also excludes it from the
-// upload as defense in depth.
 if (process.env['FUNCTIONS_EMULATOR'] === 'true') {
   loadDotenv({ path: join(__dirname, '..', '.env.local'), override: true });
 }
-// .env — deployed config; loaded without override so it never clobbers the real
-// ROADIE_API_KEY that Cloud Functions injects from Secret Manager at runtime
-// (and the file carries the production base URL).
+// .env — deployed config; loaded without override so it never clobbers secrets in SecretManager
 loadDotenv({ path: join(__dirname, '..', '.env') });
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { onRequest } from 'firebase-functions/v2/https';
+import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
@@ -50,15 +33,10 @@ import { createDonationRequestSchema, getPickupDonationMinUsd } from './validato
 initializeApp();
 
 const db = getFirestore();
-// Strip undefined values from documents instead of throwing. The donation
-// payload has three optional sub-objects (pickup / shipping / dropoff), only
-// one of which is populated per request — without this, the runTransaction
-// below fails with "Cannot use \"undefined\" as a Firestore value".
+
+// without this, we open ourselves up to 'Cannot use "undefined" as a Firestore value' errors
 db.settings({ ignoreUndefinedProperties: true });
-// Roadie production credential. Bound to every function that dispatches (see the
-// `secrets` option on each below); Firebase injects it as process.env.ROADIE_API_KEY
-// at runtime, which RoadieCourierService reads. Locally it comes from .env.local
-// instead, so the emulator runs against the Roadie sandbox.
+
 const roadieApiKey = defineSecret('ROADIE_API_KEY');
 
 let _courierService: RoadieCourierService | undefined;
@@ -277,8 +255,8 @@ export const createDonationRequest = onCall(
       } else {
         failureReason = verification.failureReason;
       }
-      status = verification.status;
 
+      status = verification.status;
       const update = {
         status,
         contribution: {
