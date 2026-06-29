@@ -239,6 +239,10 @@ export class DonationWizardPageComponent {
   // whether Angular destroys/recreates this component during nav vs reuses it).
   // Reset by reset() and tryAgainFromFailedDonation so retries can fire again.
   private pickupVerificationStarted = false;
+  // Active onSnapshot unsubscribe for the dispatch listener. NOT persisted to the
+  // state store, so a fresh component instance always re-establishes; also guards
+  // against stacking subscriptions within one instance.
+  private dispatchUnsub: (() => void) | undefined;
 
   constructor() {
     this.applyState(this.stateStore.get());
@@ -268,37 +272,14 @@ export class DonationWizardPageComponent {
         // navigates here with confirmationView='verifying' persisted. THIS instance
         // (whether freshly mounted or reused by Angular) owns the actual API call
         // so the spinner pane and the in-flight promise live together.
+        // The widget's dispatch listener navigates here (view already 'success')
+        // once the webhook flips the doc — so reaching /pickup/confirmation means
+        // success. A direct/cold landing has no draft (no requestId) -> failed.
         if (mode === 'pickup-confirmation') {
-          console.info('[wizard] /pickup/confirmation reached', {
-            view: this.confirmationView,
-            isSubmitting: this.isSubmitting,
-            method: this.deliveryMethod,
-            email: this.form.email,
-            pickupVerificationStarted: this.pickupVerificationStarted,
-          });
-          if (this.confirmationView === 'verifying' && !this.pickupVerificationStarted) {
-            if (this.deliveryMethod === 'courier' && this.form.email) {
-              console.info('[wizard] kicking off listenForDispatch');
-              this.pickupVerificationStarted = true;
-              this.listenForDispatch();
-            } else {
-              // Cold landing on /pickup/confirmation with no draft. Show the
-              // failure pane so the donor has a path back via Try again.
-              console.info('[wizard] cold landing — showing failed', {
-                method: this.deliveryMethod,
-                email: this.form.email,
-              });
-              this.confirmationView = 'failed';
-              this.cdr.markForCheck();
-            }
-          } else {
-            console.info('[wizard] verifying-trigger skipped', {
-              view: this.confirmationView,
-              alreadyStarted: this.pickupVerificationStarted,
-            });
-          }
+          this.confirmationView = this.submittedRequestId ? 'success' : 'failed';
+          this.cdr.markForCheck();
         }
-        // Non-courier confirmations are always success — no verification gate.
+        // Non-courier confirmations are always success — no payment gate.
         if (mode === 'dropoff-confirmation' || mode === 'shipping-confirmation') {
           this.confirmationView = 'success';
           this.cdr.markForCheck();
@@ -628,6 +609,11 @@ export class DonationWizardPageComponent {
       console.warn('[wizard] failed to create donation_request before payment', err);
     }
 
+    // Start watching the doc NOW, before the widget. When the donor pays and the
+    // Givebutter webhook flips it to queued_for_dispatch, the listener navigates
+    // them off the widget to success — the webhook drives the transition.
+    this.listenForDispatch();
+
     void this.transitionLocal(5);
   }
 
@@ -692,46 +678,40 @@ export class DonationWizardPageComponent {
   // queued_for_dispatch. A timeout falls back to optimistic success so a slow or
   // failed webhook never strands the donor on the spinner — they already paid, and
   // the confirmation email carries the authoritative outcome.
+  // Started when the donor reaches the widget. Watches the donation doc; the moment
+  // the Givebutter webhook flips it to queued_for_dispatch, navigates the donor off
+  // the widget to the success page. The webhook drives the transition — no confirm
+  // button. onSnapshot fires immediately with the current state, so you'll see one
+  // 'verifying_payment' snapshot right away (confirms the listener is live).
   private listenForDispatch(): void {
-    if (this.confirmationView !== 'verifying') {
-      return;
+    if (this.dispatchUnsub) {
+      return; // already listening — don't stack subscriptions
     }
-
     const requestId = this.submittedRequestId;
     if (!requestId) {
-      // Nothing to watch (e.g. cold landing) — fall back to optimistic success.
-      this.confirmationView = 'success';
-      this.persist();
-      this.cdr.markForCheck();
+      console.warn('[wizard] listenForDispatch: no requestId — not watching');
       return;
     }
 
-    let settled = false;
-    let unsubscribe: (() => void) | undefined;
-    let timer: ReturnType<typeof setTimeout>;
-
-    const settle = (view: ConfirmationView): void => {
-      if (settled) return;
-      settled = true;
-      unsubscribe?.();
-      clearTimeout(timer);
-      this.confirmationView = view;
+    const advanceToSuccess = (): void => {
+      console.info('[wizard] dispatch confirmed — advancing to success', { requestId });
+      this.dispatchUnsub?.();
+      this.dispatchUnsub = undefined;
+      this.confirmationView = 'success';
       this.persist();
-      this.cdr.markForCheck();
+      void this.transitionRoute('/pickup/confirmation', 6, true);
     };
 
-    unsubscribe = this.donationApi.watchDonationStatus(requestId, (status) => {
+    this.dispatchUnsub = this.donationApi.watchDonationStatus(requestId, (status) => {
+      console.info('[wizard] dispatch listener snapshot', { requestId, status });
       if (status === 'queued_for_dispatch') {
-        settle('success');
+        advanceToSuccess();
       }
     });
 
-    timer = setTimeout(() => settle('success'), 30_000);
-
-    // Clean up if Angular destroys this instance before we settle.
     this.destroyRef.onDestroy(() => {
-      unsubscribe?.();
-      clearTimeout(timer);
+      this.dispatchUnsub?.();
+      this.dispatchUnsub = undefined;
     });
   }
 
