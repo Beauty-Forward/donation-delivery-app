@@ -4,6 +4,7 @@ import { getPickupDonationMinUsd } from './validators.js';
 import { RoadieCourierService } from './services/roadie.service.js';
 import { DonorInfo, PickupDetails, CreateDonationRequestPayload } from './models.js';
 import { ResendEmailService } from './services/resend.service.js';
+import { isValidGivebutterSignature } from './webhook-signature.js';
 import { defineSecret } from 'firebase-functions/params';
 
 const db = getFirestore();
@@ -11,6 +12,11 @@ const db = getFirestore();
 const resendEmailService = new ResendEmailService();
 
 const roadieApiKey = defineSecret('ROADIE_API_KEY');
+
+// Givebutter's per-webhook signing secret. It arrives as the `Signature` header on
+// every delivery and must equal the value shown for this webhook in the Givebutter
+// dashboard. Set it with: firebase functions:secrets:set GIVEBUTTER_WEBHOOK_SIGNATURE
+const givebutterWebhookSecret = defineSecret('GIVEBUTTER_WEBHOOK_SIGNATURE');
 
 let _courierService: RoadieCourierService | undefined;
 function getCourierService(): RoadieCourierService {
@@ -20,10 +26,29 @@ function getCourierService(): RoadieCourierService {
 }
 
 export const handleGivebutterWebhook = onRequest(
-  { region: 'us-central1', secrets: [roadieApiKey] },
+  { region: 'us-central1', secrets: [roadieApiKey, givebutterWebhookSecret] },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ error: 'Method not allowed' });
+      return;
+    }
+
+    // Authenticate the request before trusting anything in it. We treat
+    // req.body.data.amount as proof the donor paid and book a real courier off it,
+    // so without this check anyone could POST a forged payload (a guessed requestId
+    // plus any amount) and dispatch a courier for free. Givebutter sends this
+    // webhook's signing secret in the `Signature` header on every delivery.
+    const expectedSignature = process.env['GIVEBUTTER_WEBHOOK_SIGNATURE'];
+    if (!expectedSignature) {
+      // Fail closed: with no secret configured we cannot authenticate anything, so
+      // reject rather than silently accept unauthenticated traffic.
+      console.error('[webhook] GIVEBUTTER_WEBHOOK_SIGNATURE not set; rejecting request');
+      res.status(500).json({ error: 'Webhook not configured' });
+      return;
+    }
+    if (!isValidGivebutterSignature(req.get('Signature'), expectedSignature)) {
+      console.warn('[webhook] rejected: missing or invalid Signature header');
+      res.status(401).json({ error: 'Invalid signature' });
       return;
     }
 
