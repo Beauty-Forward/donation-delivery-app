@@ -9,17 +9,17 @@ const db = getFirestore();
 
 const resendEmailService = new ResendEmailService();
 
-// Honors the confirmation page's "we'll email you within 24 hours" promise for the
-// two pickup stalls that land in payment_verification_failed:
-//   - courier_dispatch_failed: Givebutter verified payment, only Roadie booking failed
-//   - any other failureReason:  Givebutter's API errored, so payment is still unknown
+// Honors the confirmation page's "we'll email you within 24 hours" promise for
+// pickups that land in dispatch_failed: the Givebutter webhook verified payment but
+// the Roadie booking threw, so the courier isn't booked yet. We reassure the donor
+// (payment went through, we're sorting out the courier) and the warn log flags it
+// for ops to rebook by hand.
 //
 // Runs hourly and emails each stalled pickup exactly once (slaEmailSentAt flag).
-// Because it queries live state, a doc the Givebutter webhook already rescued
-// (now queued_for_dispatch) no longer matches, so we never send a redundant
-// "we're having trouble" note. Firestore can't filter on a missing field, so we
-// query by status and filter slaEmailSentAt / recency in memory — the payment_verification_failed
-// set is tiny.
+// Because it queries live state, a doc ops later rescues (rebooked ->
+// queued_for_dispatch) no longer matches, so we never send a redundant note.
+// Firestore can't filter on a missing field, so we query by status and filter
+// slaEmailSentAt / recency in memory — the dispatch_failed set is tiny.
 //
 // Recency guard: only email pickups created within RECENCY_WINDOW_MS. This keeps a
 // fresh deploy (or a backlog) from blasting ancient stuck docs that are past SLA and
@@ -34,7 +34,7 @@ export const sendStalledDonationSlaEmails = onSchedule(
 
     const snapshot = await db
       .collection('donation_requests')
-      .where('status', 'in', ['payment_verification_failed', 'awaiting_dispatch'])
+      .where('status', '==', 'dispatch_failed')
       .get();
 
     let sent = 0;
@@ -67,10 +67,9 @@ export const sendStalledDonationSlaEmails = onSchedule(
         continue;
       }
 
-      // 'awaiting_dispatch' means payment was verified — reassure with the
-      // verified amount. Anything else is a Givebutter API error (payment unknown).
-      const situation =
-        data.status === 'awaiting_dispatch' ? 'dispatch_delayed' : 'payment_pending';
+      // dispatch_failed always means payment was verified (the webhook stashed the
+      // amount in metadata) — only the courier booking failed. Reassure with the
+      // verified amount.
       const verifiedAmountUsd =
         typeof data['metadata']?.['verifiedAmountUsd'] === 'number'
           ? (data['metadata']['verifiedAmountUsd'] as number)
@@ -80,8 +79,7 @@ export const sendStalledDonationSlaEmails = onSchedule(
         resendEmailService.sendStalledPickupEmail({
           donor,
           requestId: doc.id,
-          situation,
-          verifiedAmountUsd: situation === 'dispatch_delayed' ? verifiedAmountUsd : undefined,
+          verifiedAmountUsd,
         }),
       );
       sent += 1;
@@ -95,22 +93,19 @@ export const sendStalledDonationSlaEmails = onSchedule(
   },
 );
 
-// Daily backstop for the immediate payment_not_found recovery email.
-// That nudge fires inline from createDonationRequest / verifyContributionAndDispatch
-// the moment Givebutter rejects a pickup ('not_found'), but a transient Resend
-// outage — or a cold-start crash after the send but before sendEmailOnce stamps the
-// flag — would leave the donor with no email and the doc stuck in
-// payment_not_found forever. This sweep re-sends through the SAME
-// recoveryEmailSentAt flag, so a donor who already got the immediate email is never
-// emailed twice. A doc the donor rescued late (paid -> webhook -> queued_for_dispatch)
-// no longer matches the status query, so it's never nudged.
+// Recovers abandoned pickups. A donor created the request (doc lands in
+// verifying_payment) but never completed payment in the Givebutter widget, so the
+// webhook never fired and the doc sits in verifying_payment indefinitely. This is the
+// orphaned-payment gap — there's no other signal that they dropped off. We send a
+// single "complete your donation" nudge (recoveryEmailSentAt flag). A donor who later
+// pays (-> webhook -> queued_for_dispatch) no longer matches the status query, so
+// they're never nudged after the fact.
 //
-// Two age gates bound the sweep. MIN_AGE: only docs stalled past 24h qualify, giving
-// the immediate send (and any late webhook) time to settle before we step in.
-// RECENCY_CAP: a fresh deploy (or a backlog) must not blast ancient failures that are
-// well past any reasonable recovery window and belong to manual ops cleanup; those are
-// logged instead. Firestore can't filter on a missing field, so we query by status and
-// filter recoveryEmailSentAt / age in memory — the failed set is tiny.
+// Two age gates bound the sweep. MIN_AGE: only docs stalled past 24h qualify, so we
+// never nudge someone who's simply mid-checkout. RECENCY_CAP: a fresh deploy (or a
+// backlog) must not blast ancient abandoned docs well past any reasonable recovery
+// window; those are logged for manual ops review. Firestore can't filter on a missing
+// field, so we query by status and filter recoveryEmailSentAt / age in memory.
 
 const RECOVERY_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 const RECOVERY_RECENCY_CAP_MS = 7 * 24 * 60 * 60 * 1000;
@@ -124,7 +119,7 @@ export const sendStalledRecoveryEmails = onSchedule(
 
     const snapshot = await db
       .collection('donation_requests')
-      .where('status', '==', 'payment_not_found')
+      .where('status', '==', 'verifying_payment')
       .get();
 
     let sent = 0;
@@ -134,8 +129,8 @@ export const sendStalledRecoveryEmails = onSchedule(
     for (const doc of snapshot.docs) {
       const data = doc.data();
 
-      // payment_verification_failed only ever lands on pickups (verification runs
-      // for pickup alone), and the recovery copy is pickup-specific. Guard anyway.
+      // verifying_payment only ever lands on pickups (shipping/dropoff skip the
+      // payment gate), and the recovery copy is pickup-specific. Guard anyway.
       if (data['donationType'] !== 'pickup') {
         continue;
       }
@@ -145,7 +140,7 @@ export const sendStalledRecoveryEmails = onSchedule(
 
       const createdAt = data['createdAt'] as Timestamp | undefined;
       if (!createdAt) {
-        console.warn('[recovery] verification-failed doc missing createdAt; skipping', {
+        console.warn('[recovery] abandoned pickup missing createdAt; skipping', {
           requestId: doc.id,
         });
         continue;
@@ -160,7 +155,7 @@ export const sendStalledRecoveryEmails = onSchedule(
         // Past the recency cap — don't auto-nudge a donor about a week-old failure.
         stale += 1;
         console.warn(
-          '[recovery] verification-failed doc past recency cap; needs manual ops review',
+          '[recovery] abandoned pickup past recency cap; needs manual ops review',
           {
             requestId: doc.id,
             createdAt: createdAt.toDate().toISOString(),
@@ -172,7 +167,7 @@ export const sendStalledRecoveryEmails = onSchedule(
       const donor = data['donor'] as DonorInfo | undefined;
       if (!donor?.email) {
         // e.g. failureReason 'missing_donor_email' — nothing to send to.
-        console.warn('[recovery] verification-failed doc missing donor email; skipping', {
+        console.warn('[recovery] abandoned pickup missing donor email; skipping', {
           requestId: doc.id,
         });
         continue;
@@ -187,7 +182,7 @@ export const sendStalledRecoveryEmails = onSchedule(
       sent += 1;
     }
 
-    console.info('[recovery] stalled verification-failed sweep complete', {
+    console.info('[recovery] abandoned-pickup sweep complete', {
       scanned: snapshot.size,
       emailed: sent,
       tooFresh,

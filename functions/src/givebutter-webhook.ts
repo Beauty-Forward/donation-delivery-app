@@ -88,19 +88,33 @@ export const handleGivebutterWebhook = onRequest(
         );
       } catch (err) {
         console.error('Courier dispatch failed after payment confirmation', err);
+        // Payment is confirmed (we passed the amount check); only the Roadie booking
+        // failed. Mark dispatch_failed so the SLA sweep can reassure the donor and
+        // flag it for ops, and stash the confirmed amount for that email.
+        await db
+          .collection('donation_requests')
+          .doc(requestId)
+          .set(
+            {
+              status: 'dispatch_failed',
+              metadata: {
+                ...(docDonationData['metadata'] ?? {}),
+                verifiedAmountUsd: req.body.data.amount,
+              },
+              updatedAt: Timestamp.now(),
+            },
+            { merge: true },
+          );
       }
     }
 
-    // db.collection('donation_requests').doc(requestId).get(), then snap.data()
     res.status(200).json({ ok: true });
   },
 );
 
-// A pickup_request hits `queued_for_dispatch` via three different code paths:
-// the synchronous callable, the onCreate backstop trigger, and the Givebutter
-// webhook recovery. Each used to inline the same pickup-confirmation send.
-// Centralizing here so the email payload (and any future tweaks like analytics
-// hooks) lives in one place.
+// The Givebutter webhook is now the only path to `queued_for_dispatch`. Kept as
+// its own helper so the confirmation-email payload (and any future tweaks like
+// analytics hooks) lives in one place rather than inline in the handler.
 async function notifyPickupQueued(
   requestId: string,
   donor: DonorInfo,
@@ -175,30 +189,3 @@ export function buildNextSteps(type: CreateDonationRequestPayload['donationType'
     "Leave your package with the front desk. Tell them it's for Beauty Forward.",
   ];
 }
-
-/*
-function getVerificationMetadata(v: VerifyAndDispatchResult) {
-  switch (v.status) {
-    case 'queued_for_dispatch':
-      return {
-        courierDispatchId: v.courierDispatchId,
-        verificationTransactionId: v.verificationTransactionId,
-        verifiedAmountUsd: v.verifiedAmountUsd,
-      };
-    case 'awaiting_dispatch':
-      return {
-        verificationTransactionId: v.verificationTransactionId,
-        verifiedAmountUsd: v.verifiedAmountUsd,
-      };
-    case 'payment_not_found':
-    case 'payment_verification_failed':
-      return {
-        verificationFailureReason: v.failureReason,
-      };
-  }
-}
-*/
-
-/*
-curl -X POST http://127.0.0.1:5001/beauty-forward/us-central1/handleGivebutterWebhook -H "Content-Type: application/json" -d '{"event":"transaction.succeeded","data":{"amount":25,"utm_parameters":{"utm_campaign":"7a44b321-d745-4336-847c-16dcf3baf7be"}}}'
-*/

@@ -234,11 +234,6 @@ export class DonationWizardPageComponent {
   protected errors: Record<string, string> = {};
 
   private gbListenerRegistered = false;
-  // Single-fire guard for runPickupVerification. Replaces a previous brittle
-  // dependency on isSubmitting (which can be either true or false depending on
-  // whether Angular destroys/recreates this component during nav vs reuses it).
-  // Reset by reset() and tryAgainFromFailedDonation so retries can fire again.
-  private pickupVerificationStarted = false;
   // Active onSnapshot unsubscribe for the dispatch listener. NOT persisted to the
   // state store, so a fresh component instance always re-establishes; also guards
   // against stacking subscriptions within one instance.
@@ -265,7 +260,6 @@ export class DonationWizardPageComponent {
           isSubmitting: this.isSubmitting,
           deliveryMethod: this.deliveryMethod,
           formEmail: this.form.email,
-          pickupVerificationStarted: this.pickupVerificationStarted,
         });
         this.syncToMode(mode);
         // /pickup/confirmation: confirmDonation() on the previous instance just
@@ -645,7 +639,6 @@ export class DonationWizardPageComponent {
       this.confirmationView = 'verifying';
       this.verifiedAmountUsd = null;
       this.submittedRequestId = this.requestId;
-      this.pickupVerificationStarted = false;
       this.persist();
       await this.transitionRoute('/pickup/confirmation', 6, true);
       this.isSubmitting = false;
@@ -713,77 +706,6 @@ export class DonationWizardPageComponent {
       this.dispatchUnsub?.();
       this.dispatchUnsub = undefined;
     });
-  }
-
-  // Owned by the /pickup/confirmation component instance: runs the synchronous
-  // backend verification + Roadie dispatch, then settles the view based on the
-  // real result. Idempotent enough to re-run on refresh-during-spinner — the
-  // server-side Givebutter lookup matches by donor email + recent transaction
-  // window, so a second submission of the same draft just creates an orphan
-  // donation_request and the donor still ends up at success or failed.
-  private async runPickupVerification(): Promise<void> {
-    if (this.confirmationView !== 'verifying') {
-      console.info(
-        '[wizard] runPickupVerification: skipped (view already',
-        this.confirmationView,
-        ')',
-      );
-      return;
-    }
-    console.info('[wizard] runPickupVerification: starting API call');
-    this.cdr.markForCheck();
-
-    let result: DonationSubmissionResult | null = null;
-    try {
-      result = await this.persistDonation();
-    } catch (err) {
-      console.warn('[wizard] persistDonation threw', err);
-    }
-    console.info('[wizard] persistDonation returned', result);
-
-    this.submittedRequestId = result?.requestId ?? null;
-    if (result?.status === 'queued_for_dispatch') {
-      this.confirmationView = 'success';
-      this.verifiedAmountUsd = result.verifiedAmountUsd ?? null;
-      this.failureReason = null;
-    } else if (result?.status === 'awaiting_dispatch') {
-      // Givebutter confirmed payment; only the Roadie courier booking failed.
-      // We KNOW the donor paid — reassure them and surface the verified amount.
-      this.failureReason = 'payment_verified_dispatch_failed';
-      this.verifiedAmountUsd = result.verifiedAmountUsd ?? null;
-    } else if (
-      result?.status === 'payment_verification_failed' ||
-      result?.status === 'verifying_payment'
-    ) {
-      // Two distinct failed to dispatch cases: payment_verification_failed and awaiting_dispatch, told apart by the backend's
-      // failureReason. Neither shows a "Try again / pay again" CTA.
-      this.confirmationView = 'failed';
-      if (result?.failureReason === 'courier_dispatch_failed') {
-        // Givebutter confirmed payment; only the Roadie courier booking failed.
-        // We KNOW the donor paid — reassure them and surface the verified amount.
-        this.failureReason = 'payment_verified_dispatch_failed';
-        this.verifiedAmountUsd = result.verifiedAmountUsd ?? null;
-      } else {
-        // Givebutter's API was unreachable, so we can't yet tell whether the
-        // donor paid. Acknowledge the request and say we're still confirming.
-        this.failureReason = 'payment_verification_failed';
-      }
-    } else if (result?.status === 'payment_not_found') {
-      // Givebutter confirmed there's no matching transaction — donor genuinely
-      // didn't pay. "Try again" is the right CTA here.
-      this.confirmationView = 'failed';
-      this.failureReason = 'payment_not_found';
-    } else {
-      // No usable result from our backend (the call threw, so we have no status)
-      // or an unexpected status. We can't classify the failure, so leave
-      // failureReason null — the template renders the generic "couldn't confirm"
-      // + Try-again pane, same as 'payment_verification_failed'.
-      this.confirmationView = 'failed';
-      this.failureReason = null;
-    }
-    this.persist();
-    // Zoneless: callbacks resumed after async boundaries don't auto-trigger CD.
-    this.cdr.detectChanges();
   }
 
   private async persistDonation(): Promise<DonationSubmissionResult | null> {
@@ -1172,7 +1094,6 @@ export class DonationWizardPageComponent {
     this.failureReason = null;
     this.verifiedAmountUsd = null;
     this.isSubmitting = false;
-    this.pickupVerificationStarted = false;
     this.errors = {};
     this.cdr.markForCheck();
     this.stateStore.clear();
@@ -1241,7 +1162,6 @@ export class DonationWizardPageComponent {
     this.confirmationView = 'verifying';
     this.failureReason = null;
     this.isSubmitting = false;
-    this.pickupVerificationStarted = false;
     this.cdr.markForCheck();
     this.persist();
     void this.transitionRoute('/pickup', 5, false);

@@ -134,16 +134,15 @@ export class DonationApiService {
   private getInitialStatus(type: DonationType): DonationStatus {
     switch (type) {
       case 'pickup':
-        // Matches the createDonationRequest function path. The verification trigger is
-        // server-only; if we hit this fallback (callable failed), the doc still lands
-        // in verifying_payment and the Givebutter webhook is the only recovery path.
+        // Mirrors the createDonationRequest function: pickups wait in verifying_payment
+        // for the Givebutter webhook, which is the only thing that advances them.
         return 'verifying_payment';
       case 'shipping':
         return 'awaiting_shipment';
       case 'dropoff':
         return 'dropoff_requested';
       default:
-        return 'submitted';
+        throw new Error(`getInitialStatus: unhandled donation type ${type}`);
     }
   }
 

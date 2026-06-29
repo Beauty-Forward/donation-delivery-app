@@ -1,16 +1,15 @@
 export type DonationType = 'pickup' | 'shipping' | 'dropoff';
 
 export type DonationStatus =
-  | 'submitted'
+  // Pickup: createDonationRequest lands in verifying_payment; the Givebutter webhook
+  // moves it to queued_for_dispatch (success) or dispatch_failed (paid but the Roadie
+  // booking threw). A doc stuck in verifying_payment past 24h = abandoned payment.
   | 'verifying_payment'
-  | 'payment_not_found'
-  | 'payment_verification_failed'
-  | 'awaiting_dispatch'
   | 'queued_for_dispatch'
-  | 'dispatch_requested'
+  | 'dispatch_failed'
+  // Shipping / dropoff — no payment gate, terminal at create.
   | 'awaiting_shipment'
-  | 'dropoff_requested'
-  | 'completed';
+  | 'dropoff_requested';
 
 export type ContributionStatus = 'not_started' | 'checkout_started' | 'completed' | 'skipped';
 
