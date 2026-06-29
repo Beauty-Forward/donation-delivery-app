@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { doc, getDoc, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { environment } from '../../../environments/environment';
 import {
@@ -50,6 +50,22 @@ export class DonationApiService {
       );
       return this.createDonationRequestFallback(payload);
     }
+  }
+
+  /**
+   * Subscribe to a donation_request's status in real time. `onStatus` fires on every
+   * change with the doc's current status — the Givebutter webhook flips it to
+   * 'queued_for_dispatch' once payment is confirmed and the courier is booked.
+   * Returns an unsubscribe function; the caller MUST call it to stop listening.
+   */
+  watchDonationStatus(
+    requestId: string,
+    onStatus: (status: DonationStatus | undefined) => void,
+  ): () => void {
+    const ref = doc(this.firebaseClient.firestore, 'donation_requests', requestId);
+    return onSnapshot(ref, (snap) => {
+      onStatus(snap.data()?.['status'] as DonationStatus | undefined);
+    });
   }
 
   async createContributionSession(

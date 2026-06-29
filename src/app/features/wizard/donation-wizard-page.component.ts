@@ -278,9 +278,9 @@ export class DonationWizardPageComponent {
           });
           if (this.confirmationView === 'verifying' && !this.pickupVerificationStarted) {
             if (this.deliveryMethod === 'courier' && this.form.email) {
-              console.info('[wizard] kicking off runPickupVerification');
+              console.info('[wizard] kicking off listenForDispatch');
               this.pickupVerificationStarted = true;
-              void this.runPickupVerification();
+              this.listenForDispatch();
             } else {
               // Cold landing on /pickup/confirmation with no draft. Show the
               // failure pane so the donor has a path back via Try again.
@@ -612,9 +612,20 @@ export class DonationWizardPageComponent {
     this.transitionLocal(6);
   }
 
-  protected continueFromSchedule(): void {
+  protected async continueFromSchedule(): Promise<void> {
     if (!this.validateSchedule()) {
       return;
+    }
+
+    // Create the donation doc now — in `verifying_payment`, BEFORE the donor pays —
+    // so the Givebutter webhook can find it by requestId the moment payment lands.
+    // (Payment confirmation + courier dispatch are filled in later by the webhook,
+    // not here.) All pickup logistics are known by this point; the widget is next.
+    try {
+      const result = await this.persistDonation();
+      this.submittedRequestId = result?.requestId ?? this.requestId;
+    } catch (err) {
+      console.warn('[wizard] failed to create donation_request before payment', err);
     }
 
     void this.transitionLocal(5);
@@ -640,20 +651,17 @@ export class DonationWizardPageComponent {
     this.isSubmitting = true;
 
     if (this.deliveryMethod === 'courier') {
-      // Hand off to /pickup/confirmation. Whichever component instance ends up
-      // active there (a fresh mount if Angular destroys/recreates, or this same
-      // instance if Angular reuses) owns the actual API call. The single-fire
-      // flag pickupVerificationStarted prevents double-firing in either case.
+      // Doc was created (verifying_payment) at the schedule step; payment just
+      // happened in the widget. Show the "booking your courier" pane and let
+      // /pickup/confirmation subscribe to the doc — the Givebutter webhook flips it
+      // to queued_for_dispatch, which auto-advances the donor to success (with a
+      // timeout fallback so a slow/failed webhook never spins forever).
       this.confirmationView = 'verifying';
       this.verifiedAmountUsd = null;
-      this.submittedRequestId = null;
+      this.submittedRequestId = this.requestId;
       this.pickupVerificationStarted = false;
       this.persist();
-      console.info('[wizard] confirmDonation: navigating to /pickup/confirmation');
       await this.transitionRoute('/pickup/confirmation', 6, true);
-      // Reset isSubmitting so a future Try-again retry can fire. If Angular
-      // destroyed this instance during nav, this assignment is a harmless no-op
-      // on the dead reference; if Angular reused this instance, it's necessary.
       this.isSubmitting = false;
       return;
     }
@@ -677,6 +685,54 @@ export class DonationWizardPageComponent {
     }
 
     void this.transitionRoute('/shipping/confirmation', 6, true);
+  }
+
+  // Owned by the /pickup/confirmation instance: subscribes to the donation doc and
+  // auto-advances 'verifying' -> 'success' when the Givebutter webhook flips it to
+  // queued_for_dispatch. A timeout falls back to optimistic success so a slow or
+  // failed webhook never strands the donor on the spinner — they already paid, and
+  // the confirmation email carries the authoritative outcome.
+  private listenForDispatch(): void {
+    if (this.confirmationView !== 'verifying') {
+      return;
+    }
+
+    const requestId = this.submittedRequestId;
+    if (!requestId) {
+      // Nothing to watch (e.g. cold landing) — fall back to optimistic success.
+      this.confirmationView = 'success';
+      this.persist();
+      this.cdr.markForCheck();
+      return;
+    }
+
+    let settled = false;
+    let unsubscribe: (() => void) | undefined;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const settle = (view: ConfirmationView): void => {
+      if (settled) return;
+      settled = true;
+      unsubscribe?.();
+      clearTimeout(timer);
+      this.confirmationView = view;
+      this.persist();
+      this.cdr.markForCheck();
+    };
+
+    unsubscribe = this.donationApi.watchDonationStatus(requestId, (status) => {
+      if (status === 'queued_for_dispatch') {
+        settle('success');
+      }
+    });
+
+    timer = setTimeout(() => settle('success'), 30_000);
+
+    // Clean up if Angular destroys this instance before we settle.
+    this.destroyRef.onDestroy(() => {
+      unsubscribe?.();
+      clearTimeout(timer);
+    });
   }
 
   // Owned by the /pickup/confirmation component instance: runs the synchronous
@@ -785,9 +841,6 @@ export class DonationWizardPageComponent {
       },
       contribution: {
         provider: 'givebutter',
-        // The donor explicitly attests they completed the donation by clicking through
-        // the wizard's "I've completed my donation" button. Server-side verification
-        // (verifyContributionAndDispatch) confirms against Givebutter's API by donor email.
         status: this.gbSessionId ? 'checkout_started' : 'not_started',
         ...(this.gbAmountUsd != null ? { amountUsd: this.gbAmountUsd } : {}),
         ...(this.gbSessionId ? { gbSessionId: this.gbSessionId } : {}),
@@ -1023,12 +1076,6 @@ export class DonationWizardPageComponent {
   }
 
   private validateDonation(): boolean {
-    // No client-side gate. The Givebutter Widgets SDK doesn't reliably surface a
-    // donation.complete event to our parent page (especially through Google Pay
-    // popups), so we trust the donor's "I've completed my donation" click and verify
-    // server-side in verifyContributionAndDispatch using a Givebutter API lookup by
-    // donor email. If they didn't actually donate, the failure pane catches them
-    // within the 2-second confirmation window.
     this.errors = {};
     return true;
   }
