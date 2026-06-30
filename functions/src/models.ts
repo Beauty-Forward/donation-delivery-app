@@ -95,6 +95,10 @@ export interface CourierDispatchInput {
   requestId: string;
   donor: DonorInfo;
   pickup: PickupDetails;
+  // Donor-selected size category ('small' | 'medium' | 'large'), persisted on the
+  // doc as metadata.packageSize. Maps to parcel dimensions in buildShipmentPayload.
+  // Optional — falls back to 'small' when missing/unknown.
+  packageSize?: string;
 }
 
 export interface RoadieItemDescription {

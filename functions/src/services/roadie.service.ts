@@ -2,6 +2,7 @@ import {
   AddressInfo,
   CourierDispatchInput,
   RoadieAddress,
+  RoadieItemDescription,
   RoadieShipmentPayload,
 } from '../models.js';
 import {
@@ -72,6 +73,22 @@ export class RoadieCourierService {
   }
 }
 
+// Donor-facing size categories mapped to parcel dimensions (inches) + weight (lbs)
+// for Roadie's vehicle sizing. Tuned to the size hints shown in the wizard:
+// small = shoebox, medium = fits a car front seat, large = fits a car back seat.
+// These are estimates — refine as we learn real donation profiles.
+const PACKAGE_DIMENSIONS = {
+  small: { length: 13, width: 7, height: 6, weight: 3 },
+  medium: { length: 24, width: 18, height: 16, weight: 15 },
+  large: { length: 36, width: 24, height: 24, weight: 40 },
+};
+
+// Unknown/missing size falls back to small so a dispatch never fails on a bad value.
+function buildPackageItem(packageSize: string | undefined): RoadieItemDescription {
+  const dims = PACKAGE_DIMENSIONS[packageSize as keyof typeof PACKAGE_DIMENSIONS] ?? PACKAGE_DIMENSIONS.small;
+  return { description: 'Beauty product donation', quantity: 1, ...dims };
+}
+
 // POST /shipments as per Roadie documentation
 export function buildShipmentPayload(input: CourierDispatchInput): RoadieShipmentPayload {
   const { requestId, donor, pickup } = input;
@@ -84,16 +101,7 @@ export function buildShipmentPayload(input: CourierDispatchInput): RoadieShipmen
     reference_id: requestId,
     idempotency_key: requestId,
     description: 'Beauty Forward donation pickup',
-    items: [
-      {
-        description: 'Beauty product donation',
-        quantity: 1,
-        length: 13,
-        width: 7,
-        height: 6,
-        weight: 3,
-      },
-    ],
+    items: [buildPackageItem(input.packageSize)],
     pickup_location: {
       address: toRoadieAddress(pickup.pickupAddress),
       notes: pickup.courierNotes,

@@ -88,6 +88,7 @@ export const handleGivebutterWebhook = onRequest(
           requestId,
           donor: docDonationData['donor'],
           pickup: docDonationData['pickup'],
+          packageSize: docDonationData['metadata']?.['packageSize'],
         });
 
         await db
