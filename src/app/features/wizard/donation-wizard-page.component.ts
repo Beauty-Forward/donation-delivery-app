@@ -428,10 +428,6 @@ export class DonationWizardPageComponent {
     ];
 
     if (this.deliveryMethod === 'courier') {
-      // Prefer the verified amount from the callable (server confirmed this was paid).
-      // gbAmountUsd is the donor's intended amount captured from the widget event,
-      // which is unreliable (event doesn't always propagate from the iframe). Only
-      // falls back to it on the review step before submission.
       const donationValue =
         this.verifiedAmountUsd != null
           ? `$${this.verifiedAmountUsd}`
@@ -446,10 +442,6 @@ export class DonationWizardPageComponent {
         {
           label: 'Address',
           value: `${this.form.addressLine1}, ${this.form.city}, ${this.form.state}`,
-        },
-        {
-          label: 'Donation',
-          value: donationValue,
         },
       );
     }
@@ -592,6 +584,8 @@ export class DonationWizardPageComponent {
       return;
     }
 
+    this.transitionLocal(5);
+
     // Create the donation doc now — in `verifying_payment`, BEFORE the donor pays —
     // so the Givebutter webhook can find it by requestId the moment payment lands.
     // (Payment confirmation + courier dispatch are filled in later by the webhook,
@@ -607,8 +601,6 @@ export class DonationWizardPageComponent {
     // Givebutter webhook flips it to queued_for_dispatch, the listener navigates
     // them off the widget to success — the webhook drives the transition.
     this.listenForDispatch();
-
-    void this.transitionLocal(5);
   }
 
   protected continueFromDropoffInfo(): void {

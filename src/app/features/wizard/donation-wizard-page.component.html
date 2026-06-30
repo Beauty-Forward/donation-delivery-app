@@ -493,8 +493,8 @@
             <div>
               <img id="pixel-heart" src="pixel-heart.webp" />
               <p class="pane-note">
-                Once you've completed your donation in the widget above, click below to continue.
-                We'll confirm with Givebutter on the next step using the email you entered earlier.
+                Once you've completed your donation in the widget above, we'll confirm with
+                Givebutter and navigate you to the next page with your dispatch details.
               </p>
             </div>
 
@@ -618,10 +618,6 @@
                     </div>
                   }
                 </div>
-
-                @if (deliveryMethod === 'courier') {
-                  <div class="roadie-inline">Tracking link sent to your email</div>
-                }
 
                 <button type="button" class="btn btn-primary" (click)="restartFromHome()">
                   Start Another Donation
