@@ -31,6 +31,7 @@ import {
 } from '../../core/models/donation.models';
 import { environment } from '../../../environments/environment';
 import { NYC_CITIES, US_STATES } from '../../core/constants/us-states';
+import { WAREHOUSE_INSTRUCTIONS } from '../../core/constants/warehouse';
 
 // The Givebutter widget script (loaded in src/index.html) installs a global queueing
 // function `window.Givebutter(...)` exposing addEventListener / EVENT constants.
@@ -113,6 +114,7 @@ export class DonationWizardPageComponent {
   // explicitly call cdr.markForCheck()/detectChanges() after any state mutation
   // that needs to land in the template.
   private readonly cdr = inject(ChangeDetectorRef);
+  private requestId: string | null = null;
 
   protected readonly bfEmail = environment.email;
   protected readonly nycCities = NYC_CITIES;
@@ -154,8 +156,7 @@ export class DonationWizardPageComponent {
     {
       id: 'dropoff',
       title: 'Drop Off',
-      description:
-        'Bring your donation to our Brooklyn warehouse during business hours. Available Tuesdays and Thursdays. Free.',
+      description: 'Bring your donation to our Brooklyn warehouse during business hours. Free.',
     },
     {
       id: 'ship',
@@ -165,9 +166,9 @@ export class DonationWizardPageComponent {
   ];
   protected readonly dropoffArrivalSteps: StepLineItem[] = [
     { number: '01', text: 'Head to the drop-off desk inside the warehouse entrance' },
-    { number: '02', text: "You'll be given a QR code label to attach to your package" },
-    { number: '03', text: 'Scan the QR code at the desk and fill in your details' },
-    { number: '04', text: "Leave your package with our team - that's it!" },
+    { number: '02', text: 'Tell them you are dropping off a package for Beauty Forward' },
+    { number: '03', text: 'Leave the package with them' },
+    { number: '04', text: 'Your items will be redistributed to people who need them!' },
   ];
   protected readonly shippingHowItWorksSteps: StepLineItem[] = [
     { number: '01', text: 'Pack your beauty products securely in a box or padded mailer' },
@@ -216,11 +217,11 @@ export class DonationWizardPageComponent {
   // back to the donation widget. Non-courier flows skip 'verifying' entirely.
   protected confirmationView: ConfirmationView = 'verifying';
   // When confirmationView is 'failed', this explains *why* so the template can
-  // show truthful copy. The awaiting_payment variants must NOT prompt the donor
+  // show truthful copy. The payment_verification_failed and awaiting_dispatch variants must NOT prompt the donor
   // to pay again: 'payment_verified_dispatch_failed' means Givebutter confirmed
   // payment but the courier booking failed (they definitely paid), and
-  // 'awaiting_payment' means Givebutter's API was unreachable so we can't yet
-  // tell (they may have paid). 'payment_verification_failed' is a real
+  // 'payment_verification_failed' means Givebutter's API was unreachable so we can't yet
+  // tell (they may have paid). 'payment_not_found' is a real
   // "no payment found", where the Try-again CTA is correct. null means no
   // classified failure — either no failure, or our backend never returned a
   // usable result (the call threw); it renders the same Try-again pane.
@@ -233,11 +234,10 @@ export class DonationWizardPageComponent {
   protected errors: Record<string, string> = {};
 
   private gbListenerRegistered = false;
-  // Single-fire guard for runPickupVerification. Replaces a previous brittle
-  // dependency on isSubmitting (which can be either true or false depending on
-  // whether Angular destroys/recreates this component during nav vs reuses it).
-  // Reset by reset() and tryAgainFromFailedDonation so retries can fire again.
-  private pickupVerificationStarted = false;
+  // Active onSnapshot unsubscribe for the dispatch listener. NOT persisted to the
+  // state store, so a fresh component instance always re-establishes; also guards
+  // against stacking subscriptions within one instance.
+  private dispatchUnsub: (() => void) | undefined;
 
   constructor() {
     this.applyState(this.stateStore.get());
@@ -260,44 +260,20 @@ export class DonationWizardPageComponent {
           isSubmitting: this.isSubmitting,
           deliveryMethod: this.deliveryMethod,
           formEmail: this.form.email,
-          pickupVerificationStarted: this.pickupVerificationStarted,
         });
         this.syncToMode(mode);
         // /pickup/confirmation: confirmDonation() on the previous instance just
         // navigates here with confirmationView='verifying' persisted. THIS instance
         // (whether freshly mounted or reused by Angular) owns the actual API call
         // so the spinner pane and the in-flight promise live together.
+        // The widget's dispatch listener navigates here (view already 'success')
+        // once the webhook flips the doc — so reaching /pickup/confirmation means
+        // success. A direct/cold landing has no draft (no requestId) -> failed.
         if (mode === 'pickup-confirmation') {
-          console.info('[wizard] /pickup/confirmation reached', {
-            view: this.confirmationView,
-            isSubmitting: this.isSubmitting,
-            method: this.deliveryMethod,
-            email: this.form.email,
-            pickupVerificationStarted: this.pickupVerificationStarted,
-          });
-          if (this.confirmationView === 'verifying' && !this.pickupVerificationStarted) {
-            if (this.deliveryMethod === 'courier' && this.form.email) {
-              console.info('[wizard] kicking off runPickupVerification');
-              this.pickupVerificationStarted = true;
-              void this.runPickupVerification();
-            } else {
-              // Cold landing on /pickup/confirmation with no draft. Show the
-              // failure pane so the donor has a path back via Try again.
-              console.info('[wizard] cold landing — showing failed', {
-                method: this.deliveryMethod,
-                email: this.form.email,
-              });
-              this.confirmationView = 'failed';
-              this.cdr.markForCheck();
-            }
-          } else {
-            console.info('[wizard] verifying-trigger skipped', {
-              view: this.confirmationView,
-              alreadyStarted: this.pickupVerificationStarted,
-            });
-          }
+          this.confirmationView = this.submittedRequestId ? 'success' : 'failed';
+          this.cdr.markForCheck();
         }
-        // Non-courier confirmations are always success — no verification gate.
+        // Non-courier confirmations are always success — no payment gate.
         if (mode === 'dropoff-confirmation' || mode === 'shipping-confirmation') {
           this.confirmationView = 'success';
           this.cdr.markForCheck();
@@ -415,7 +391,6 @@ export class DonationWizardPageComponent {
           ],
         },
         { label: 'Donating from', lines: [`${this.form.city}, ${this.form.state}`] },
-        { label: 'Dropoff Notes', lines: [this.form.dropoffNotes] },
       );
     }
 
@@ -453,10 +428,6 @@ export class DonationWizardPageComponent {
     ];
 
     if (this.deliveryMethod === 'courier') {
-      // Prefer the verified amount from the callable (server confirmed this was paid).
-      // gbAmountUsd is the donor's intended amount captured from the widget event,
-      // which is unreliable (event doesn't always propagate from the iframe). Only
-      // falls back to it on the review step before submission.
       const donationValue =
         this.verifiedAmountUsd != null
           ? `$${this.verifiedAmountUsd}`
@@ -471,10 +442,6 @@ export class DonationWizardPageComponent {
         {
           label: 'Address',
           value: `${this.form.addressLine1}, ${this.form.city}, ${this.form.state}`,
-        },
-        {
-          label: 'Donation',
-          value: donationValue,
         },
       );
     }
@@ -587,14 +554,12 @@ export class DonationWizardPageComponent {
       return;
     }
 
-    if (!this.validateDropoffTime()) {
-      return;
-    }
-
     const next = this.afterDetailsStep;
 
     if (next === 4) {
-      void this.transitionRoute('/pickup', 4, false);
+      this.requestId = crypto.randomUUID();
+      this.transitionRoute(`/pickup?utm_campaign=${this.requestId}`, 4, false);
+
       return;
     }
 
@@ -614,12 +579,28 @@ export class DonationWizardPageComponent {
     this.transitionLocal(6);
   }
 
-  protected continueFromSchedule(): void {
+  protected async continueFromSchedule(): Promise<void> {
     if (!this.validateSchedule()) {
       return;
     }
 
-    void this.transitionLocal(5);
+    this.transitionLocal(5);
+
+    // Create the donation doc now — in `verifying_payment`, BEFORE the donor pays —
+    // so the Givebutter webhook can find it by requestId the moment payment lands.
+    // (Payment confirmation + courier dispatch are filled in later by the webhook,
+    // not here.) All pickup logistics are known by this point; the widget is next.
+    try {
+      const result = await this.persistDonation();
+      this.submittedRequestId = result?.requestId ?? this.requestId;
+    } catch (err) {
+      console.warn('[wizard] failed to create donation_request before payment', err);
+    }
+
+    // Start watching the doc NOW, before the widget. When the donor pays and the
+    // Givebutter webhook flips it to queued_for_dispatch, the listener navigates
+    // them off the widget to success — the webhook drives the transition.
+    this.listenForDispatch();
   }
 
   protected continueFromDropoffInfo(): void {
@@ -642,20 +623,16 @@ export class DonationWizardPageComponent {
     this.isSubmitting = true;
 
     if (this.deliveryMethod === 'courier') {
-      // Hand off to /pickup/confirmation. Whichever component instance ends up
-      // active there (a fresh mount if Angular destroys/recreates, or this same
-      // instance if Angular reuses) owns the actual API call. The single-fire
-      // flag pickupVerificationStarted prevents double-firing in either case.
+      // Doc was created (verifying_payment) at the schedule step; payment just
+      // happened in the widget. Show the "booking your courier" pane and let
+      // /pickup/confirmation subscribe to the doc — the Givebutter webhook flips it
+      // to queued_for_dispatch, which auto-advances the donor to success (with a
+      // timeout fallback so a slow/failed webhook never spins forever).
       this.confirmationView = 'verifying';
       this.verifiedAmountUsd = null;
-      this.submittedRequestId = null;
-      this.pickupVerificationStarted = false;
+      this.submittedRequestId = this.requestId;
       this.persist();
-      console.info('[wizard] confirmDonation: navigating to /pickup/confirmation');
       await this.transitionRoute('/pickup/confirmation', 6, true);
-      // Reset isSubmitting so a future Try-again retry can fire. If Angular
-      // destroyed this instance during nav, this assignment is a harmless no-op
-      // on the dead reference; if Angular reused this instance, it's necessary.
       this.isSubmitting = false;
       return;
     }
@@ -681,67 +658,46 @@ export class DonationWizardPageComponent {
     void this.transitionRoute('/shipping/confirmation', 6, true);
   }
 
-  // Owned by the /pickup/confirmation component instance: runs the synchronous
-  // backend verification + Roadie dispatch, then settles the view based on the
-  // real result. Idempotent enough to re-run on refresh-during-spinner — the
-  // server-side Givebutter lookup matches by donor email + recent transaction
-  // window, so a second submission of the same draft just creates an orphan
-  // donation_request and the donor still ends up at success or failed.
-  private async runPickupVerification(): Promise<void> {
-    if (this.confirmationView !== 'verifying') {
-      console.info(
-        '[wizard] runPickupVerification: skipped (view already',
-        this.confirmationView,
-        ')',
-      );
+  // Owned by the /pickup/confirmation instance: subscribes to the donation doc and
+  // auto-advances 'verifying' -> 'success' when the Givebutter webhook flips it to
+  // queued_for_dispatch. A timeout falls back to optimistic success so a slow or
+  // failed webhook never strands the donor on the spinner — they already paid, and
+  // the confirmation email carries the authoritative outcome.
+  // Started when the donor reaches the widget. Watches the donation doc; the moment
+  // the Givebutter webhook flips it to queued_for_dispatch, navigates the donor off
+  // the widget to the success page. The webhook drives the transition — no confirm
+  // button. onSnapshot fires immediately with the current state, so you'll see one
+  // 'verifying_payment' snapshot right away (confirms the listener is live).
+  private listenForDispatch(): void {
+    if (this.dispatchUnsub) {
+      return; // already listening — don't stack subscriptions
+    }
+    const requestId = this.submittedRequestId;
+    if (!requestId) {
+      console.warn('[wizard] listenForDispatch: no requestId — not watching');
       return;
     }
-    console.info('[wizard] runPickupVerification: starting API call');
-    this.cdr.markForCheck();
 
-    let result: DonationSubmissionResult | null = null;
-    try {
-      result = await this.persistDonation();
-    } catch (err) {
-      console.warn('[wizard] persistDonation threw', err);
-    }
-    console.info('[wizard] persistDonation returned', result);
-
-    this.submittedRequestId = result?.requestId ?? null;
-    if (result?.status === 'queued_for_dispatch') {
+    const advanceToSuccess = (): void => {
+      console.info('[wizard] dispatch confirmed — advancing to success', { requestId });
+      this.dispatchUnsub?.();
+      this.dispatchUnsub = undefined;
       this.confirmationView = 'success';
-      this.verifiedAmountUsd = result.verifiedAmountUsd ?? null;
-      this.failureReason = null;
-    } else if (result?.status === 'awaiting_payment' || result?.status === 'verifying_payment') {
-      // Two distinct awaiting_payment cases, told apart by the backend's
-      // failureReason. Neither shows a "Try again / pay again" CTA.
-      this.confirmationView = 'failed';
-      if (result?.failureReason === 'courier_dispatch_failed') {
-        // Givebutter confirmed payment; only the Roadie courier booking failed.
-        // We KNOW the donor paid — reassure them and surface the verified amount.
-        this.failureReason = 'payment_verified_dispatch_failed';
-        this.verifiedAmountUsd = result.verifiedAmountUsd ?? null;
-      } else {
-        // Givebutter's API was unreachable, so we can't yet tell whether the
-        // donor paid. Acknowledge the request and say we're still confirming.
-        this.failureReason = 'awaiting_payment';
+      this.persist();
+      void this.transitionRoute('/pickup/confirmation', 6, true);
+    };
+
+    this.dispatchUnsub = this.donationApi.watchDonationStatus(requestId, (status) => {
+      console.info('[wizard] dispatch listener snapshot', { requestId, status });
+      if (status === 'queued_for_dispatch') {
+        advanceToSuccess();
       }
-    } else if (result?.status === 'payment_verification_failed') {
-      // Givebutter confirmed there's no matching transaction — donor genuinely
-      // didn't pay. "Try again" is the right CTA here.
-      this.confirmationView = 'failed';
-      this.failureReason = 'payment_verification_failed';
-    } else {
-      // No usable result from our backend (the call threw, so we have no status)
-      // or an unexpected status. We can't classify the failure, so leave
-      // failureReason null — the template renders the generic "couldn't confirm"
-      // + Try-again pane, same as 'payment_verification_failed'.
-      this.confirmationView = 'failed';
-      this.failureReason = null;
-    }
-    this.persist();
-    // Zoneless: callbacks resumed after async boundaries don't auto-trigger CD.
-    this.cdr.detectChanges();
+    });
+
+    this.destroyRef.onDestroy(() => {
+      this.dispatchUnsub?.();
+      this.dispatchUnsub = undefined;
+    });
   }
 
   private async persistDonation(): Promise<DonationSubmissionResult | null> {
@@ -770,10 +726,7 @@ export class DonationWizardPageComponent {
     // this same object directly to Firestore. So we omit the field entirely when we
     // don't have a value, rather than setting it to undefined.
     const payload: CreateDonationRequestPayload = {
-      // One key per submit attempt. Shared by the callable and the direct-
-      // Firestore fallback so both dispatch attempts collapse to a single Roadie
-      // idempotency_key — no duplicate courier even if the callable times out. #113.
-      idempotencyKey: crypto.randomUUID(),
+      requestId: this.requestId || crypto.randomUUID(),
       donationType,
       donor: {
         fullName,
@@ -782,9 +735,6 @@ export class DonationWizardPageComponent {
       },
       contribution: {
         provider: 'givebutter',
-        // The donor explicitly attests they completed the donation by clicking through
-        // the wizard's "I've completed my donation" button. Server-side verification
-        // (verifyContributionAndDispatch) confirms against Givebutter's API by donor email.
         status: this.gbSessionId ? 'checkout_started' : 'not_started',
         ...(this.gbAmountUsd != null ? { amountUsd: this.gbAmountUsd } : {}),
         ...(this.gbSessionId ? { gbSessionId: this.gbSessionId } : {}),
@@ -804,19 +754,14 @@ export class DonationWizardPageComponent {
         pickupAddress: this.buildDonorAddress(donorCity, donorState),
         preferredDate: this.selectedDate ?? '',
         preferredTimeWindow: this.selectedTime ?? '',
-        courierNotes: this.form.courierNotes || undefined,
+        courierNotes: this.form.courierNotes,
         warehouseAddress,
+        warehouseDeliveryInstructions: WAREHOUSE_INSTRUCTIONS,
       };
     } else if (donationType === 'dropoff') {
       payload.dropoff = {
-        // The wizard doesn't ask dropoff donors to schedule a slot — they
-        // walk in during business hours, so use today's date and a
-        // "flexible" window.
-        preferredDate: new Date().toISOString().slice(0, 10),
-        preferredTimeWindow: 'flexible',
         locationName: this.warehouseConfig.destination.name,
         locationAddress: warehouseAddress,
-        dropoffNotes: this.form.dropoffNotes || undefined,
       };
     } else {
       payload.shipping = {
@@ -1025,29 +970,8 @@ export class DonationWizardPageComponent {
   }
 
   private validateDonation(): boolean {
-    // No client-side gate. The Givebutter Widgets SDK doesn't reliably surface a
-    // donation.complete event to our parent page (especially through Google Pay
-    // popups), so we trust the donor's "I've completed my donation" click and verify
-    // server-side in verifyContributionAndDispatch using a Givebutter API lookup by
-    // donor email. If they didn't actually donate, the failure pane catches them
-    // within the 2-second confirmation window.
     this.errors = {};
     return true;
-  }
-
-  private validateDropoffTime(): boolean {
-    if (this.deliveryMethod !== 'dropoff') {
-      return true;
-    }
-
-    const errors: Record<string, string> = {};
-
-    if (!this.form.dropoffNotes.trim()) {
-      errors['dropoffNotes'] = 'Tell us when you plan to come';
-    }
-
-    this.errors = errors;
-    return Object.keys(errors).length === 0;
   }
 
   private validateSchedule(): boolean {
@@ -1122,6 +1046,7 @@ export class DonationWizardPageComponent {
     this.confirmationView = state.confirmationView;
     this.failureReason = state.failureReason;
     this.verifiedAmountUsd = state.verifiedAmountUsd;
+    this.requestId = state.requestId;
     this.ensureMethodDefaults();
   }
 
@@ -1141,6 +1066,7 @@ export class DonationWizardPageComponent {
       confirmationView: this.confirmationView,
       failureReason: this.failureReason,
       verifiedAmountUsd: this.verifiedAmountUsd,
+      requestId: this.requestId,
     };
   }
 
@@ -1160,7 +1086,6 @@ export class DonationWizardPageComponent {
     this.failureReason = null;
     this.verifiedAmountUsd = null;
     this.isSubmitting = false;
-    this.pickupVerificationStarted = false;
     this.errors = {};
     this.cdr.markForCheck();
     this.stateStore.clear();
@@ -1229,7 +1154,6 @@ export class DonationWizardPageComponent {
     this.confirmationView = 'verifying';
     this.failureReason = null;
     this.isSubmitting = false;
-    this.pickupVerificationStarted = false;
     this.cdr.markForCheck();
     this.persist();
     void this.transitionRoute('/pickup', 5, false);

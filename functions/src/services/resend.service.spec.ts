@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ResendEmailService } from './resend.service.js';
-import { WAREHOUSE_ADDRESS } from '../constants/warehouse.js';
+import { WAREHOUSE_ADDRESS } from '../warehouse.js';
 import type { DonorInfo, PickupDetails, ShippingDetails, DropoffDetails } from '../models.js';
 
 type FetchArgs = Parameters<typeof fetch>;
@@ -59,8 +59,6 @@ const SHIPPING: ShippingDetails = {
 };
 
 const DROPOFF: DropoffDetails = {
-  preferredDate: '2026-06-02',
-  preferredTimeWindow: '1 PM – 5 PM',
   locationName: 'Beauty Forward Warehouse',
   locationAddress: WAREHOUSE_ADDRESS,
 };
@@ -78,10 +76,8 @@ describe('ResendEmailService', () => {
 
     await service.sendPickupConfirmationEmail({
       donor: DONOR,
-      requestId: 'req_1',
       status: 'queued_for_dispatch',
       pickup: PICKUP,
-      courierDispatchId: 'roadie_abc',
       nextSteps: ['step 1'],
     });
 
@@ -101,10 +97,8 @@ describe('ResendEmailService', () => {
 
     await service.sendPickupConfirmationEmail({
       donor: DONOR,
-      requestId: 'req_pickup',
       status: 'queued_for_dispatch',
       pickup: PICKUP,
-      courierDispatchId: 'roadie_xyz',
       nextSteps: ['Keep your donation accessible.'],
     });
 
@@ -123,7 +117,6 @@ describe('ResendEmailService', () => {
     expect(body.from).toBe('onboarding@resend.dev');
     expect(body.to).toEqual(['jane@example.com']);
     expect(body.subject).toMatch(/pickup/i);
-    expect(body.html).toContain('roadie_xyz');
     expect(body.html).toContain('123 Main St');
   });
 
@@ -146,7 +139,7 @@ describe('ResendEmailService', () => {
     });
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
-    expect(body.subject).toMatch(/shipping/i);
+    expect(body.subject).toMatch(/donation is confirmed/i);
     expect(body.html).toContain('14 53rd St');
     expect(body.html).toContain('Brooklyn');
   });
@@ -166,7 +159,7 @@ describe('ResendEmailService', () => {
     });
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
-    expect(body.subject).toMatch(/pickup is still here/i);
+    expect(body.subject).toMatch(/finish.*pickup/i);
     expect(body.to).toEqual(['jane@example.com']);
     // Abandoned-cart framing: addresses the donor warmly and reminds them of the action.
     expect(body.html).toContain('Jane Rivera');
@@ -218,7 +211,10 @@ describe('ResendEmailService', () => {
     expect(body.from).toBe('info@beauty-forward.org');
   });
 
-  it('throws when Resend returns a non-OK status', async () => {
+  it('logs but does not throw when Resend returns a non-OK status', async () => {
+    // Email is best-effort: a non-OK response is logged, not thrown, so a Resend
+    // failure can't fail the donation flow.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { fn } = makeFetchMock([{ status: 422, body: { message: 'invalid recipient' } }]);
     const service = new ResendEmailService(
       'test-key',
@@ -230,11 +226,13 @@ describe('ResendEmailService', () => {
     await expect(
       service.sendPickupConfirmationEmail({
         donor: DONOR,
-        requestId: 'req_err',
         status: 'queued_for_dispatch',
         pickup: PICKUP,
         nextSteps: [],
       }),
-    ).rejects.toThrow(/Resend send failed: 422/);
+    ).resolves.toBeUndefined();
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/Resend send failed: 422/));
+    errorSpy.mockRestore();
   });
 });

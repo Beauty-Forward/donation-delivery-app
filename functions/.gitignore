@@ -5,3 +5,6 @@ firebase-debug.*.log
 ui-debug.log
 pubsub-debug.log
 *.log
+
+# Email previews for testing
+preview-emails*

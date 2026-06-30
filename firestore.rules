@@ -3,7 +3,12 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /donation_requests/{requestId} {
       allow create: if true;
-      allow read: if false;
+      // Single-doc read by id only — the requestId is an unguessable UUID the donor
+      // generated, so knowing it is the capability. Lets the wizard watch its own
+      // donation's status (verifying_payment -> queued_for_dispatch) via onSnapshot.
+      allow get: if true;
+      // No list/query: nobody enumerates the collection (it holds donor PII).
+      allow list: if false;
       allow update, delete: if false;
     }
   }

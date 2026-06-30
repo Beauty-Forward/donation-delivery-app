@@ -262,31 +262,6 @@
               <p class="field-error spacing-top">{{ errors['packageSize'] }}</p>
             }
 
-            @if (deliveryMethod === 'dropoff') {
-              <div class="notice-card spacing-top hours-notice">
-                <p>Only available Tuesdays and Thursdays, 9-6 ET</p>
-              </div>
-              <div>
-                <form class="user-notes">
-                  <label class="section-eyebrow spacing-top-lg" for="dropoff-notes"
-                    >What time do you want to come by?</label
-                  >
-                  <textarea
-                    id="dropoff-notes"
-                    name="dropoff-notes"
-                    rows="2"
-                    placeholder="Let us know when during available hours you'd like to come by so we can expect you. Ex. 'Tuesday 4/4 at 4pm'"
-                    [ngModel]="form.dropoffNotes"
-                    (ngModelChange)="updateField('dropoffNotes', $event)"
-                    [class.invalid]="!!errors['dropoffNotes']"
-                  ></textarea>
-                  @if (errors['dropoffNotes']) {
-                    <p class="field-error spacing-top">{{ errors['dropoffNotes'] }}</p>
-                  }
-                </form>
-              </div>
-            }
-
             @if (deliveryMethod === 'dropoff' || deliveryMethod === 'ship') {
               <p class="section-eyebrow spacing-top-lg">Where are you donating from?</p>
               <div class="field-grid two-up">
@@ -518,16 +493,13 @@
             <div>
               <img id="pixel-heart" src="pixel-heart.webp" />
               <p class="pane-note">
-                Once you've completed your donation in the widget above, click below to continue.
-                We'll confirm with Givebutter on the next step using the email you entered earlier.
+                Once you've completed your donation in the widget above, we'll confirm with
+                Givebutter and navigate you to the next page with your dispatch details.
               </p>
             </div>
 
             <div class="wizard-nav">
               <button type="button" class="btn btn-secondary" (click)="goBack()">← Back</button>
-              <button type="button" class="btn btn-primary" (click)="continueFromDonation()">
-                I've completed my donation →
-              </button>
             </div>
           </section>
         }
@@ -566,7 +538,7 @@
                     </button>
                   </div>
                 </section>
-              } @else if (failureReason === 'awaiting_payment') {
+              } @else if (failureReason === 'payment_verification_failed') {
                 <!--
                   Givebutter's API was unreachable, so we can't yet tell whether the
                   donor paid. We acknowledge the request and do NOT show a "Try again"
@@ -646,10 +618,6 @@
                     </div>
                   }
                 </div>
-
-                @if (deliveryMethod === 'courier') {
-                  <div class="roadie-inline">Tracking link sent to your email</div>
-                }
 
                 <button type="button" class="btn btn-primary" (click)="restartFromHome()">
                   Start Another Donation

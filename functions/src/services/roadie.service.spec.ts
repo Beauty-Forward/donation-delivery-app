@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RoadieCourierProvider, buildShipmentPayload, buildTimeWindow } from './roadie-provider.js';
-import type { CourierDispatchInput } from './courier-provider.js';
+import { RoadieCourierService, buildShipmentPayload, buildTimeWindow } from './roadie.service.js';
+import {
+  WAREHOUSE_CONTACT_NAME,
+  WAREHOUSE_CONTACT_PHONE,
+  WAREHOUSE_INSTRUCTIONS,
+} from '../warehouse.js';
+import type { CourierDispatchInput } from '../models.js';
 
 type FetchArgs = Parameters<typeof fetch>;
 
@@ -52,40 +57,28 @@ const farFutureInput: CourierDispatchInput = {
       state: 'NY',
       postalCode: '11101',
     },
+    // Required by the type but ignored by buildShipmentPayload — delivery notes
+    // come from the WAREHOUSE_INSTRUCTIONS const, not this field. The assertions
+    // below prove that by checking the const, not this value.
+    warehouseDeliveryInstructions: 'IGNORED — service uses the warehouse const',
   },
 };
 
-describe('RoadieCourierProvider', () => {
+describe('RoadieCourierService', () => {
   it('throws when ROADIE_API_KEY is not configured', async () => {
     const { fn } = makeFetchMock([]);
-    const provider = new RoadieCourierProvider(
-      '',
-      'https://sandbox.roadie.test/v1',
-      5000,
-      'WH',
-      '5550000000',
-      fn,
-    );
-    await expect(provider.dispatchPickup(farFutureInput)).rejects.toThrow(
+    const service = new RoadieCourierService('', 'https://sandbox.roadie.test/v1', 5000, fn);
+    await expect(service.dispatchPickup(farFutureInput)).rejects.toThrow(
       /ROADIE_API_KEY not configured/,
     );
     expect(fn).not.toHaveBeenCalled();
   });
 
-  it('posts to {base}/shipments with Bearer auth and JSON body', async () => {
-    const { fn, calls } = makeFetchMock([
-      { status: 201, body: { id: 'roadie_dlv_99', status: 'created' } },
-    ]);
-    const provider = new RoadieCourierProvider(
-      'sk_test_123',
-      'https://sandbox.roadie.test/v1',
-      5000,
-      'BF Warehouse',
-      '5559876543',
-      fn,
-    );
+  it('posts to {base}/shipments with Bearer auth and returns the shipment id', async () => {
+    const { fn, calls } = makeFetchMock([{ status: 201, body: { id: 'roadie_dlv_99' } }]);
+    const service = new RoadieCourierService('sk_test_123', 'https://sandbox.roadie.test/v1', 5000, fn);
 
-    const result = await provider.dispatchPickup(farFutureInput);
+    const result = await service.dispatchPickup(farFutureInput);
 
     expect(fn).toHaveBeenCalledTimes(1);
     const [url, init] = calls[0]!;
@@ -96,33 +89,26 @@ describe('RoadieCourierProvider', () => {
       Authorization: 'Bearer sk_test_123',
       'Content-Type': 'application/json',
     });
-    expect(result).toEqual({
-      provider: 'roadie',
-      dispatchId: 'roadie_dlv_99',
-      status: 'queued',
-      etaWindow: expect.any(String),
-    });
+    expect(result).toBe('roadie_dlv_99');
+  });
+
+  it('coerces a numeric shipment id to a string', async () => {
+    const { fn } = makeFetchMock([{ status: 201, body: { id: 12345 } }]);
+    const service = new RoadieCourierService('sk', 'https://s.test/v1', 5000, fn);
+
+    expect(await service.dispatchPickup(farFutureInput)).toBe('12345');
   });
 
   it('maps donor + pickup details into the Roadie request body', async () => {
-    const { fn, calls } = makeFetchMock([{ status: 201, body: { id: 1, status: 'created' } }]);
-    const provider = new RoadieCourierProvider(
-      'sk_test',
-      'https://sandbox.roadie.test/v1',
-      5000,
-      'BF Warehouse',
-      '5559876543',
-      fn,
-    );
+    const { fn, calls } = makeFetchMock([{ status: 201, body: { id: 'd1' } }]);
+    const service = new RoadieCourierService('sk_test', 'https://sandbox.roadie.test/v1', 5000, fn);
 
-    await provider.dispatchPickup(farFutureInput);
+    await service.dispatchPickup(farFutureInput);
 
     const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
     expect(body.reference_id).toBe('req_abc123');
     expect(body.description).toBe('Beauty Forward donation pickup');
-    expect(body.items).toMatchObject([
-      { description: 'Beauty product donation', quantity: 1 },
-    ]);
+    expect(body.items).toMatchObject([{ description: 'Beauty product donation', quantity: 1 }]);
     expect(body.pickup_location.address).toEqual({
       street1: '123 Main St',
       street2: 'Apt 4',
@@ -137,19 +123,16 @@ describe('RoadieCourierProvider', () => {
     });
     expect(body.delivery_location.address).toEqual({
       street1: '789 Warehouse Way',
-      street2: undefined,
       city: 'Queens',
       state: 'NY',
       zip: '11101',
     });
-    expect(body.delivery_location.notes).toBeUndefined();
+    // Delivery notes + contact come from the warehouse consts, not the request.
+    expect(body.delivery_location.notes).toBe(WAREHOUSE_INSTRUCTIONS);
     expect(body.delivery_location.contact).toEqual({
-      name: 'BF Warehouse',
-      phone: '5559876543',
+      name: WAREHOUSE_CONTACT_NAME,
+      phone: WAREHOUSE_CONTACT_PHONE,
     });
-    expect(typeof body.pickup_after).toBe('string');
-    expect(typeof body.deliver_between.start).toBe('string');
-    expect(typeof body.deliver_between.end).toBe('string');
     expect(body.time_zone).toBe('America/New_York');
     // pickupAfter for "9am-12pm" on 2099-05-20 (EDT) = 13:00 UTC.
     expect(body.pickup_after).toBe('2099-05-20T13:00:00.000Z');
@@ -157,107 +140,42 @@ describe('RoadieCourierProvider', () => {
     expect(body.deliver_between.end).toBe('2099-05-20T20:00:00.000Z');
   });
 
-  it('populates delivery_location.notes from warehouseAddress.instructions', async () => {
-    const { fn, calls } = makeFetchMock([{ status: 201, body: { id: 'd1', status: 'created' } }]);
-    const provider = new RoadieCourierProvider(
-      'sk_test',
-      'https://sandbox.roadie.test/v1',
-      5000,
-      'BF Warehouse',
-      '5559876543',
-      fn,
-    );
-
-    await provider.dispatchPickup({
-      ...farFutureInput,
-      pickup: {
-        ...farFutureInput.pickup,
-        warehouseAddress: {
-          ...farFutureInput.pickup.warehouseAddress,
-          instructions: 'Loading dock B; buzz #614',
-        },
-      },
-    });
-
-    const body = JSON.parse((calls[0]![1] as RequestInit).body as string);
-    expect(body.delivery_location.notes).toBe('Loading dock B; buzz #614');
-  });
-
-  it('returns status=assigned when Roadie says the delivery is assigned', async () => {
-    const { fn } = makeFetchMock([{ status: 200, body: { id: 'd1', status: 'assigned' } }]);
-    const provider = new RoadieCourierProvider(
-      'k',
-      'https://s.test/v1',
-      5000,
-      'W',
-      '5550000000',
-      fn,
-    );
-
-    const r = await provider.dispatchPickup(farFutureInput);
-    expect(r.status).toBe('assigned');
-  });
-
   it('throws with response body when Roadie returns non-2xx', async () => {
     const { fn } = makeFetchMock([{ status: 401, body: { error: 'unauthorized' } }]);
-    const provider = new RoadieCourierProvider(
-      'bad',
-      'https://s.test/v1',
-      5000,
-      'W',
-      '5550000000',
-      fn,
-    );
+    const service = new RoadieCourierService('bad', 'https://s.test/v1', 5000, fn);
 
-    await expect(provider.dispatchPickup(farFutureInput)).rejects.toThrow(
+    await expect(service.dispatchPickup(farFutureInput)).rejects.toThrow(
       /Roadie create-shipment failed: 401/,
     );
   });
 
-  it('throws when Roadie 2xx response has no id', async () => {
-    const { fn } = makeFetchMock([{ status: 200, body: { status: 'created' } }]);
-    const provider = new RoadieCourierProvider(
-      'k',
-      'https://s.test/v1',
-      5000,
-      'W',
-      '5550000000',
-      fn,
-    );
+  it('throws when a 2xx response has no shipment id', async () => {
+    // Guards the String(undefined) === "undefined" trap: a missing id must throw,
+    // not silently persist the literal string "undefined" as the dispatch id.
+    const { fn } = makeFetchMock([{ status: 200, body: { state: 'scheduled' } }]);
+    const service = new RoadieCourierService('k', 'https://s.test/v1', 5000, fn);
 
-    await expect(provider.dispatchPickup(farFutureInput)).rejects.toThrow(/missing shipment id/);
+    await expect(service.dispatchPickup(farFutureInput)).rejects.toThrow(/missing shipment id/);
   });
 
   it('treats a 409 (duplicate idempotency_key) as already dispatched, not a failure', async () => {
     const { fn } = makeFetchMock([{ status: 409, body: { error: 'duplicate idempotency_key' } }]);
-    const provider = new RoadieCourierProvider(
-      'k',
-      'https://s.test/v1',
-      5000,
-      'W',
-      '5550000000',
-      fn,
-    );
+    const service = new RoadieCourierService('k', 'https://s.test/v1', 5000, fn);
 
-    // Must NOT throw — a second dispatch for the same donation is a no-op.
-    const result = await provider.dispatchPickup(farFutureInput);
-    // Empty dispatchId so the caller's `courierDispatchId ? ...` guard preserves
-    // the id recorded by the first (200) dispatch.
-    expect(result).toEqual({ provider: 'roadie', dispatchId: '', status: 'queued', etaWindow: '' });
+    // Must NOT throw — a second dispatch for the same donation is a no-op. Returns
+    // '' because Roadie doesn't echo the original shipment id on a 409.
+    expect(await service.dispatchPickup(farFutureInput)).toBe('');
   });
 
-  it('sends idempotency_key: the input key when present, else the requestId', async () => {
-    const { fn, calls } = makeFetchMock([
-      { status: 201, body: { id: 'a', status: 'created' } },
-      { status: 201, body: { id: 'b', status: 'created' } },
-    ]);
-    const provider = new RoadieCourierProvider('k', 'https://s.test/v1', 5000, 'W', '5550000000', fn);
+  it('sends the requestId as the idempotency_key', async () => {
+    const { fn, calls } = makeFetchMock([{ status: 201, body: { id: 'a' } }]);
+    const service = new RoadieCourierService('k', 'https://s.test/v1', 5000, fn);
 
-    await provider.dispatchPickup({ ...farFutureInput, idempotencyKey: 'idem_xyz' });
-    await provider.dispatchPickup(farFutureInput); // no idempotencyKey
+    await service.dispatchPickup(farFutureInput);
 
-    expect(JSON.parse((calls[0]![1] as RequestInit).body as string).idempotency_key).toBe('idem_xyz');
-    expect(JSON.parse((calls[1]![1] as RequestInit).body as string).idempotency_key).toBe('req_abc123');
+    expect(JSON.parse((calls[0]![1] as RequestInit).body as string).idempotency_key).toBe(
+      'req_abc123',
+    );
   });
 });
 
@@ -320,16 +238,14 @@ describe('buildTimeWindow', () => {
 });
 
 describe('buildShipmentPayload', () => {
-  it('keeps a clean description regardless of whether courier notes are set', () => {
-    const input: CourierDispatchInput = {
-      ...farFutureInput,
-      pickup: { ...farFutureInput.pickup, courierNotes: undefined },
-    };
-    const body = buildShipmentPayload(input, {
-      warehouseContactName: 'W',
-      warehouseContactPhone: '5550000000',
-    });
+  it('maps required courier notes and the constant warehouse contact into the payload', () => {
+    const body = buildShipmentPayload(farFutureInput);
     expect(body.description).toBe('Beauty Forward donation pickup');
-    expect(body.pickup_location.notes).toBeUndefined();
+    expect(body.pickup_location.notes).toBe('Buzz apt 4B, leave with doorman');
+    expect(body.delivery_location.notes).toBe(WAREHOUSE_INSTRUCTIONS);
+    expect(body.delivery_location.contact).toEqual({
+      name: WAREHOUSE_CONTACT_NAME,
+      phone: WAREHOUSE_CONTACT_PHONE,
+    });
   });
 });

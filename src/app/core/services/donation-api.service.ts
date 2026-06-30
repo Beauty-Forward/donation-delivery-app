@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { doc, getDoc, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { environment } from '../../../environments/environment';
 import {
@@ -52,6 +52,22 @@ export class DonationApiService {
     }
   }
 
+  /**
+   * Subscribe to a donation_request's status in real time. `onStatus` fires on every
+   * change with the doc's current status — the Givebutter webhook flips it to
+   * 'queued_for_dispatch' once payment is confirmed and the courier is booked.
+   * Returns an unsubscribe function; the caller MUST call it to stop listening.
+   */
+  watchDonationStatus(
+    requestId: string,
+    onStatus: (status: DonationStatus | undefined) => void,
+  ): () => void {
+    const ref = doc(this.firebaseClient.firestore, 'donation_requests', requestId);
+    return onSnapshot(ref, (snap) => {
+      onStatus(snap.data()?.['status'] as DonationStatus | undefined);
+    });
+  }
+
   async createContributionSession(
     payload: CreateContributionSessionPayload,
   ): Promise<ContributionSessionResponse> {
@@ -89,12 +105,7 @@ export class DonationApiService {
       },
     };
 
-    // Deterministic doc id, shared with the callable via idempotencyKey, so both
-    // collapse onto one doc. Create-if-not-exists: if the callable already wrote
-    // this doc (the common timeout case), back off rather than overwrite — an
-    // overwrite would wipe its status/email-sent flag and trigger a second
-    // confirmation email. See #113 (L1).
-    const requestId = payload.idempotencyKey ?? crypto.randomUUID();
+    const requestId = payload.requestId;
     const firestore = this.firebaseClient.firestore;
     const donationRef = doc(firestore, 'donation_requests', requestId);
 
@@ -108,7 +119,8 @@ export class DonationApiService {
 
     // The callable may have advanced the doc past the initial status (e.g. to
     // queued_for_dispatch). Reflect whatever is actually persisted.
-    const finalStatus = ((await getDoc(donationRef)).data()?.['status'] as DonationStatus) ?? status;
+    const finalStatus =
+      ((await getDoc(donationRef)).data()?.['status'] as DonationStatus) ?? status;
 
     return {
       requestId,
@@ -122,16 +134,15 @@ export class DonationApiService {
   private getInitialStatus(type: DonationType): DonationStatus {
     switch (type) {
       case 'pickup':
-        // Matches the createDonationRequest function path. The verification trigger is
-        // server-only; if we hit this fallback (callable failed), the doc still lands
-        // in verifying_payment and the Givebutter webhook is the only recovery path.
+        // Mirrors the createDonationRequest function: pickups wait in verifying_payment
+        // for the Givebutter webhook, which is the only thing that advances them.
         return 'verifying_payment';
       case 'shipping':
         return 'awaiting_shipment';
       case 'dropoff':
         return 'dropoff_requested';
       default:
-        return 'submitted';
+        throw new Error(`getInitialStatus: unhandled donation type ${type}`);
     }
   }
 

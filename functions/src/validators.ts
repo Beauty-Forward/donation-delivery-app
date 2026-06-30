@@ -5,7 +5,7 @@ import { z } from 'zod';
 // from .env.local) aren't reliably present when modules first evaluate, so caching this
 // in a const would freeze it at the 15 fallback regardless of what the env says.
 export function getPickupDonationMinUsd(): number {
-  return Number(process.env.PICKUP_DONATION_MIN_USD ?? 100);
+  return Number(process.env.PICKUP_DONATION_MIN_USD ?? 15);
 }
 
 const addressSchema = z.object({
@@ -14,7 +14,6 @@ const addressSchema = z.object({
   city: z.string().min(2),
   state: z.string().min(2).max(2),
   postalCode: z.string().min(5),
-  instructions: z.string().optional(),
 });
 
 const donorSchema = z.object({
@@ -36,8 +35,9 @@ const pickupSchema = z.object({
   pickupAddress: addressSchema,
   preferredDate: z.string().min(4),
   preferredTimeWindow: z.string().min(4),
-  courierNotes: z.string().optional(),
+  courierNotes: z.string(),
   warehouseAddress: addressSchema,
+  warehouseDeliveryInstructions: z.string(),
 });
 
 const shippingSchema = z.object({
@@ -46,15 +46,13 @@ const shippingSchema = z.object({
 });
 
 const dropoffSchema = z.object({
-  preferredDate: z.string().min(4),
-  preferredTimeWindow: z.string().min(4),
-  dropoffNotes: z.string().optional(),
   locationName: z.string().min(2),
   locationAddress: addressSchema,
 });
 
 export const createDonationRequestSchema = z
   .object({
+    requestId: z.string().min(8).max(200),
     donationType: z.enum(['pickup', 'shipping', 'dropoff']),
     donor: donorSchema,
     contribution: contributionSchema,
@@ -62,7 +60,6 @@ export const createDonationRequestSchema = z
     shipping: shippingSchema.optional(),
     dropoff: dropoffSchema.optional(),
     metadata: z.record(z.unknown()).optional(),
-    idempotencyKey: z.string().min(8).max(200).optional(),
   })
   .superRefine((payload, context) => {
     if (payload.donationType === 'pickup' && !payload.pickup) {

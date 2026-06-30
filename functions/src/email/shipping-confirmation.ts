@@ -1,8 +1,8 @@
-import { DonorInfo, ShippingDetails, DonationStatus } from '../../models.js';
+import { DonorInfo, ShippingDetails, DonationStatus } from '../models.js';
 import {
+  COLORS,
   wrapInBaseLayout,
   formatAddress,
-  statusDotHtml,
   eyebrowHtml,
   headingHtml,
   bodyTextHtml,
@@ -30,28 +30,19 @@ export function buildShippingConfirmationEmail(data: ShippingConfirmationEmailDa
   subject: string;
   html: string;
 } {
-  const { donor, requestId, status, shipping, warehouseAddress, nextSteps } = data;
-
-  let gridRows = gridRowHtml('Request ID', requestId);
-
-  gridRows += gridRowHtml('Status', status);
+  const { donor, shipping, warehouseAddress, nextSteps } = data;
 
   const addressRows = [gridRowHtml('Ship To', formatAddress(warehouseAddress))].join('');
 
   const notesSection = shipping.packageNotes
     ? `${sectionHeadingHtml('Package Notes')}
-      <p style="margin:0; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:#6b6560; line-height:1.5;">${shipping.packageNotes}</p>`
+      <p style="margin:0; font-family:'Open Sauce Sans', Arial, Helvetica, sans-serif; font-size:14px; color:${COLORS.textSoft}; line-height:1.5;">${shipping.packageNotes}</p>`
     : '';
 
   const body = `
-    ${statusDotHtml()}
     ${eyebrowHtml('Ship your items')}
     ${headingHtml("You're all set")}
-    ${bodyTextHtml(`Hi ${donor.fullName}, thanks for donating! Please ship your items to the warehouse address below. Once you've shipped your items, email us at info@beauty-forward.org with your shipping confirmation number so that we can track delivery.`)}
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-      ${gridRows}
-    </table>
+    ${bodyTextHtml(`Hi ${donor.fullName}, thanks for donating! Please ship your items to the warehouse address below. Once you've shipped your items, email us at <a href="mailto:info@beauty-forward.org" style="color:${COLORS.heading};">info@beauty-forward.org</a> with your shipping confirmation number so that we can track delivery.`)}
 
     ${sectionHeadingHtml('Shipping Details')}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">

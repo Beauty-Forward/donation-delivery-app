@@ -1,23 +1,16 @@
 export type DonationType = 'pickup' | 'shipping' | 'dropoff';
 
 export type DonationStatus =
-  | 'submitted'
+  // Pickup. createDonationRequest lands the doc in verifying_payment; the Givebutter
+  // webhook moves it to queued_for_dispatch on success, or dispatch_failed if payment
+  // confirmed but the Roadie booking threw (sendStalledDonationSlaEmails recovers it).
+  // A doc stuck in verifying_payment past 24h = abandoned (sendStalledRecoveryEmails).
   | 'verifying_payment'
-  | 'awaiting_payment'
-  | 'payment_verification_failed'
   | 'queued_for_dispatch'
-  | 'dispatch_requested'
-  // Pickup-courier lifecycle, advanced by the Roadie inbound webhook
-  // (handleRoadieWebhook). queued_for_dispatch → dispatch_requested (driver
-  // assigned) → in_transit (en route) → delivered (terminal success).
-  // delivery_failed is the terminal unhappy path (canceled / returned /
-  // attempt failed). See #106, #107.
-  | 'in_transit'
-  | 'delivered'
-  | 'delivery_failed'
+  | 'dispatch_failed'
+  // Shipping / dropoff — no payment gate, terminal at create.
   | 'awaiting_shipment'
-  | 'dropoff_requested'
-  | 'completed';
+  | 'dropoff_requested';
 
 export interface DonorInfo {
   fullName: string;
@@ -32,7 +25,6 @@ export interface AddressInfo {
   city: string;
   state: string;
   postalCode: string;
-  instructions?: string;
 }
 
 export interface ContributionIntent {
@@ -49,8 +41,9 @@ export interface PickupDetails {
   pickupAddress: AddressInfo;
   preferredDate: string;
   preferredTimeWindow: string;
-  courierNotes?: string;
+  courierNotes: string;
   warehouseAddress: AddressInfo;
+  warehouseDeliveryInstructions: string;
 }
 
 export interface ShippingDetails {
@@ -59,14 +52,12 @@ export interface ShippingDetails {
 }
 
 export interface DropoffDetails {
-  preferredDate: string;
-  preferredTimeWindow: string;
-  dropoffNotes?: string;
   locationName: string;
   locationAddress: AddressInfo;
 }
 
 export interface CreateDonationRequestPayload {
+  requestId: string;
   donationType: DonationType;
   donor: DonorInfo;
   contribution: ContributionIntent;
@@ -74,10 +65,6 @@ export interface CreateDonationRequestPayload {
   shipping?: ShippingDetails;
   dropoff?: DropoffDetails;
   metadata?: Record<string, unknown>;
-  // Client-generated, stable per donation attempt. Shared by the callable and
-  // the direct-Firestore fallback; forwarded to Roadie as idempotency_key to
-  // prevent a duplicate courier booking. See #113.
-  idempotencyKey?: string;
 }
 
 export interface DonationSubmissionResult {
@@ -104,9 +91,59 @@ export interface ContributionSessionResponse {
   checkoutUrl: string;
 }
 
-export interface CourierDispatchResult {
-  provider: 'roadie' | 'mock-roadie';
-  dispatchId: string;
-  status: 'queued' | 'assigned';
-  etaWindow: string;
+export interface CourierDispatchInput {
+  requestId: string;
+  donor: DonorInfo;
+  pickup: PickupDetails;
+  // Donor-selected size category ('small' | 'medium' | 'large'), persisted on the
+  // doc as metadata.packageSize. Maps to parcel dimensions in buildShipmentPayload.
+  // Optional — falls back to 'small' when missing/unknown.
+  packageSize?: string;
+}
+
+export interface RoadieItemDescription {
+  description: 'Beauty product donation';
+  quantity: number;
+  length: number;
+  width: number;
+  height: number;
+  weight: number;
+}
+
+export interface RoadieAddress {
+  street1: string;
+  street2: string | undefined;
+  city: string;
+  state: string;
+  zip: string;
+}
+
+export interface RoadieLocation {
+  address: RoadieAddress;
+  notes: string;
+  contact: {
+    name: string;
+    phone: string;
+  };
+}
+
+export interface RoadieShipmentPayload {
+  reference_id: string;
+  idempotency_key: string;
+  description: 'Beauty Forward donation pickup';
+  items: RoadieItemDescription[];
+  pickup_location: RoadieLocation;
+  delivery_location: RoadieLocation;
+  pickup_after: string;
+  deliver_between: {
+    start: string;
+    end: string;
+  };
+  time_zone: 'America/New_York';
+  options: {
+    signature_required: false;
+    notifications_enabled: true;
+    over_21_required: false;
+    decline_insurance: true;
+  };
 }

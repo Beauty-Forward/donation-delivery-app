@@ -1,15 +1,15 @@
 export type DonationType = 'pickup' | 'shipping' | 'dropoff';
 
 export type DonationStatus =
-  | 'submitted'
+  // Pickup: createDonationRequest lands in verifying_payment; the Givebutter webhook
+  // moves it to queued_for_dispatch (success) or dispatch_failed (paid but the Roadie
+  // booking threw). A doc stuck in verifying_payment past 24h = abandoned payment.
   | 'verifying_payment'
-  | 'awaiting_payment'
-  | 'payment_verification_failed'
   | 'queued_for_dispatch'
-  | 'dispatch_requested'
+  | 'dispatch_failed'
+  // Shipping / dropoff — no payment gate, terminal at create.
   | 'awaiting_shipment'
-  | 'dropoff_requested'
-  | 'completed';
+  | 'dropoff_requested';
 
 export type ContributionStatus = 'not_started' | 'checkout_started' | 'completed' | 'skipped';
 
@@ -27,7 +27,6 @@ export interface AddressInfo {
   city: string;
   state: string;
   postalCode: string;
-  instructions?: string;
 }
 
 export interface WarehouseDestination {
@@ -50,8 +49,9 @@ export interface PickupDetails {
   pickupAddress: AddressInfo;
   preferredDate: string;
   preferredTimeWindow: string;
-  courierNotes?: string;
+  courierNotes: string;
   warehouseAddress: AddressInfo;
+  warehouseDeliveryInstructions: string;
 }
 
 export interface ShippingDetails {
@@ -60,9 +60,6 @@ export interface ShippingDetails {
 }
 
 export interface DropoffDetails {
-  preferredDate: string;
-  preferredTimeWindow: string;
-  dropoffNotes?: string;
   locationName: string;
   locationAddress: AddressInfo;
 }
@@ -80,15 +77,13 @@ export interface PickupFlowDraft {
 
 export interface DropoffFlowDraft {
   donor: DonorInfo;
-  preferredDate: string;
-  preferredTimeWindow: string;
-  dropoffNotes?: string;
   contributionAmountUsd?: number;
   contributionCheckoutStarted?: boolean;
   contributionCheckoutUrl?: string;
 }
 
 export interface CreateDonationRequestPayload {
+  requestId: string;
   donationType: DonationType;
   donor: DonorInfo;
   contribution: ContributionIntent;
@@ -96,10 +91,6 @@ export interface CreateDonationRequestPayload {
   shipping?: ShippingDetails;
   dropoff?: DropoffDetails;
   metadata?: Record<string, unknown>;
-  // Stable per donation attempt. Sent to the callable and reused in the
-  // direct-Firestore fallback so both dispatch attempts share one Roadie
-  // idempotency_key — preventing a duplicate courier booking. See #113.
-  idempotencyKey?: string;
 }
 
 export interface DonationSubmissionResult {
