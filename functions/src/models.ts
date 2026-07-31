@@ -1,16 +1,11 @@
 export type DonationType = 'pickup' | 'shipping' | 'dropoff';
 
 export type DonationStatus =
-  // Pickup. createDonationRequest lands the doc in verifying_payment; the Givebutter
-  // webhook moves it to queued_for_dispatch on success, or dispatch_failed if payment
-  // confirmed but the Roadie booking threw (sendStalledDonationSlaEmails recovers it).
-  // A doc stuck in verifying_payment past 24h = abandoned (sendStalledRecoveryEmails).
   | 'verifying_payment'
   | 'queued_for_dispatch'
   | 'dispatch_failed'
-  // Shipping / dropoff — no payment gate, terminal at create.
-  | 'awaiting_shipment'
-  | 'dropoff_requested';
+  | 'awaiting_shipment' // shipping path
+  | 'dropoff_requested'; // dropoff path
 
 export interface DonorInfo {
   fullName: string;
@@ -32,8 +27,6 @@ export interface ContributionIntent {
   status: 'not_started' | 'checkout_started' | 'completed' | 'skipped';
   amountUsd?: number;
   checkoutUrl?: string;
-  // Set client-side from the Givebutter widget's donation.complete event; used by the
-  // webhook handler to reconcile a payment back to this donation_request.
   gbSessionId?: string;
 }
 
@@ -95,9 +88,6 @@ export interface CourierDispatchInput {
   requestId: string;
   donor: DonorInfo;
   pickup: PickupDetails;
-  // Donor-selected size category ('small' | 'medium' | 'large'), persisted on the
-  // doc as metadata.packageSize. Maps to parcel dimensions in buildShipmentPayload.
-  // Optional — falls back to 'small' when missing/unknown.
   packageSize?: string;
 }
 
