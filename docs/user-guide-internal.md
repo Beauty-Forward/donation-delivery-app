@@ -2,7 +2,7 @@
 
 > **Who this is for:** The Beauty Forward team handling donations. It covers what reaches
 > you, how to answer the donor questions you'll get, the one situation that needs you to
-> act, and when to hand something to your technical contact.
+> act, and when to hand something to your technical support.
 >
 > You don't need any technical background, and you don't need to touch the code or the
 > database.
@@ -20,9 +20,9 @@ That's it. Everything else the app does — recording donations, sending emails,
 when to book a courier — happens **automatically in the background.** You don't start it
 and you can't see it directly.
 
-> **What you *don't* touch:** the donation database (in Firebase). The team doesn't have
-> access to it and doesn't need it. Anything that requires looking *inside* a donation
-> record goes to your **technical contact** — see *When to escalate.*
+> **What you _don't_ touch:** the donation database (in Firebase). The team doesn't have
+> access to it and doesn't need it. Anything that requires looking _inside_ a donation
+> record goes to your **technical support** — see _When to escalate._
 
 ---
 
@@ -42,15 +42,15 @@ Each is covered below.
 
 ## Answering donor questions
 
-| The donor says… | What to do |
-| --- | --- |
-| **"Did my donation go through?"** | Check **Givebutter** for their contribution (search by email/amount). If it's there, they're all set. |
-| **"I donated but didn't get an email."** | Emails are automatic but not instant. If their payment shows in Givebutter, reassure them it's recorded. If they *never* got any email, flag it to your technical contact — email delivery may need a look. |
-| **"Where's my courier?"** | Check **Roadie** for their pickup. Roadie sends its own driver texts, so point them there too. Late/cancelled drivers are a Roadie matter. |
-| **"I paid but no pickup was scheduled."** | The important one — see *The one situation that needs you* below. |
-| **"Can I change or cancel my pickup?"** | Handle it in **Roadie** (reschedule/cancel the courier). There's no self-service for the donor. |
-| **"I'm going to ship my items."** | They mail items themselves to the warehouse and should email you their **tracking number**. Watch for the package. |
-| **"I want to drop items off."** | Their confirmation email has the **drop-off location and hours** (Mon–Fri, 9 AM–5 PM). They leave the package at the front desk saying it's for Beauty Forward. |
+| The donor says…                           | What to do                                                                                                                                                                                                  |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **"Did my donation go through?"**         | Check **Givebutter** for their contribution (search by email/amount). If it's there, they're all set.                                                                                                       |
+| **"I donated but didn't get an email."**  | Emails are automatic but not instant. If their payment shows in Givebutter, reassure them it's recorded. If they _never_ got any email, flag it to your technical support — email delivery may need a look. |
+| **"Where's my courier?"**                 | Check **Roadie** for their pickup. Roadie sends its own driver texts, so point them there too. Late/cancelled drivers are a Roadie matter.                                                                  |
+| **"I paid but no pickup was scheduled."** | The important one — see _The one situation that needs you_ below.                                                                                                                                           |
+| **"Can I change or cancel my pickup?"**   | Handle it in **Roadie** (reschedule/cancel the courier). There's no self-service for the donor.                                                                                                             |
+| **"I'm going to ship my items."**         | They mail items themselves to the warehouse and should email you their **tracking number**. Watch for the package.                                                                                          |
+| **"I want to drop items off."**           | Their confirmation email has the **drop-off location and hours** (Mon–Fri, 9 AM–5 PM). They leave the package at the front desk saying it's for Beauty Forward.                                             |
 
 ---
 
@@ -73,9 +73,9 @@ may mention that.
    **no courier exists**, that's this case.
 3. **Book the courier in Roadie yourself** — you have access. That gets the pickup to the
    donor.
-4. **Tell your technical contact** you rebooked, so they can tidy the donation's record
-   behind the scenes. *(Booking in Roadie by hand doesn't update the app's records — the
-   donor is served either way, but the tech contact closes the loop.)*
+4. **Tell your technical support** you rebooked, so they can tidy the donation's record
+   behind the scenes. _(Booking in Roadie by hand doesn't update the app's records — the
+   donor is served either way, but the tech support closes the loop.)_
 
 > **A pattern to watch:** one of these now and then is a normal hiccup. **Several in a
 > short span** suggests something bigger (a Roadie outage or a bad warehouse setting) —
@@ -87,11 +87,11 @@ may mention that.
 
 The app sends these on its own. Knowing they exist helps you answer donors:
 
-| Email | Who gets it | When |
-| --- | --- | --- |
-| **Confirmation** | Every donor | Right after they finish (pickups: once their payment is confirmed) |
-| **"Finish your donation" reminder** | Pickup donors who never completed payment | The day after they started |
-| **"We're on it" reassurance** | Pickup donors whose payment cleared but courier didn't book | Within an hour of the problem |
+| Email                               | Who gets it                                                 | When                                                               |
+| ----------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ |
+| **Confirmation**                    | Every donor                                                 | Right after they finish (pickups: once their payment is confirmed) |
+| **"Finish your donation" reminder** | Pickup donors who never completed payment                   | The day after they started                                         |
+| **"We're on it" reassurance**       | Pickup donors whose payment cleared but courier didn't book | Within an hour of the problem                                      |
 
 You don't send any of these — but if a donor references one, this table tells you what
 they're talking about.
@@ -112,7 +112,7 @@ and hours. No courier, no payment.
 
 ## When to escalate (and what to include)
 
-Send it to your **technical contact** when:
+Send it to your **technical support** when:
 
 - A donor's **payment shows in Givebutter but nothing seems to have happened** for days
   (this can be a rare "lost payment" case only they can trace).
@@ -122,18 +122,18 @@ Send it to your **technical contact** when:
 
 **When you escalate, include:** the donor's **name and email**, roughly **when** they
 donated, **which method** (pickup / ship / drop-off), and **what they're seeing**. That's
-enough for the technical contact to find the record.
+enough for the technical support to find the record.
 
 ---
 
 ## Quick reference
 
-| Question | Go to |
-| --- | --- |
-| Did they pay? | **Givebutter** |
-| Where's the courier? / rebook one | **Roadie** |
-| Anything inside the donation record | **Technical contact** |
+| Question                            | Go to                 |
+| ----------------------------------- | --------------------- |
+| Did they pay?                       | **Givebutter**        |
+| Where's the courier? / rebook one   | **Roadie**            |
+| Anything inside the donation record | **Technical support** |
 
 **The golden rule:** if payment went through but no courier was booked, **rebook it in
 Roadie** — that's the one thing that's yours to fix. Everything deeper goes to your
-technical contact.
+technical support.

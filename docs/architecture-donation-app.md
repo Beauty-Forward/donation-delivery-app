@@ -3,9 +3,9 @@
 > **Who this is for:** Anyone who needs to understand how the donation app is put
 > together — what the pieces are, how they talk to each other, and where things
 > live — without reading the code. Non-technical readers can stop at
-> *[Built to grow](#built-to-grow)*; a technical successor should keep going into
+> _[Built to grow](#built-to-grow)_; a technical successor should keep going into
 > the appendix. Companion docs: **Donation Lifecycle & State Machine** (what a
-> donation *does*) and **Accounts & Services** (how to sign in to each piece).
+> donation _does_) and **Accounts & Services** (how to sign in to each piece).
 
 ---
 
@@ -23,14 +23,14 @@ contribution and books a courier, and emails them a confirmation.
 
 Think of it as **your two pieces** plus **three outside services** you rent.
 
-| Piece | Who runs it | What it does |
-| --- | --- | --- |
-| **The website** (the wizard) | Us | What the donor sees and fills in, in their browser |
+| Piece                             | Who runs it             | What it does                                             |
+| --------------------------------- | ----------------------- | -------------------------------------------------------- |
+| **The website** (the wizard)      | Us                      | What the donor sees and fills in, in their browser       |
 | **The backend** (cloud functions) | Us (on Google Firebase) | The logic: saves donations, books couriers, sends emails |
-| **The database** (Firestore) | Google Firebase | Stores every donation and its current status |
-| **Givebutter** | Outside service | Takes the donor's pay-what-you-wish contribution |
-| **Roadie** | Outside service | The courier network that picks up and delivers |
-| **Resend** | Outside service | Sends the confirmation and reminder emails |
+| **The database** (Firestore)      | Google Firebase         | Stores every donation and its current status             |
+| **Givebutter**                    | Outside service         | Takes the donor's pay-what-you-wish contribution         |
+| **Roadie**                        | Outside service         | The courier network that picks up and delivers           |
+| **Resend**                        | Outside service         | Sends the confirmation and reminder emails               |
 
 The three outside services are the only things that cost money to run and the only
 things that can break independently of our code. Most troubleshooting comes down to
@@ -67,7 +67,7 @@ flowchart TD
 ```
 
 **The one arrow that matters most** is the thick one: Givebutter → backend. When a
-donor pays, Givebutter *tells our backend*, and that message is what triggers the
+donor pays, Givebutter _tells our backend_, and that message is what triggers the
 courier booking. Everything downstream of a pickup hangs on that one message arriving.
 
 ---
@@ -79,10 +79,10 @@ donation** to the database. Shipping and drop-off are done at that point (the do
 shown what to do, and gets an email immediately). A **pickup** is saved as "waiting for
 payment" and stops there — no courier yet. The donor pays in Givebutter; Givebutter
 pings the backend; the backend **books Roadie** and emails the confirmation. From then
-on Roadie runs the pickup and sends the donor its own driver updates. *(The full
+on Roadie runs the pickup and sends the donor its own driver updates. _(The full
 step-by-step, including what happens when something stalls, is in the **Donation
 Lifecycle & State Machine** doc — this doc is about the parts, that one is about the
-journey.)*
+journey.)_
 
 ---
 
@@ -107,12 +107,12 @@ record. That's deliberate: one place to look for any donation.
 The backend is **four** small programs ("cloud functions"). Two run when triggered;
 two run on a timer.
 
-| Function | Runs when… | What it does |
-| --- | --- | --- |
-| `createDonationRequest` | The donor submits the wizard | Validates the form, saves the donation, and (for ship/drop-off) sends the confirmation email right away |
-| `handleGivebutterWebhook` | Givebutter reports a payment | Confirms the payment matches a real donation, books the Roadie courier, and emails the pickup confirmation. If the booking fails, marks it for a human |
-| `sendStalledDonationSlaEmails` | Every hour | Reassures donors whose payment went through but whose courier booking failed |
-| `sendStalledRecoveryEmails` | Every day, 9 AM ET | Nudges donors who started a pickup but never finished paying |
+| Function                       | Runs when…                   | What it does                                                                                                                                           |
+| ------------------------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `createDonationRequest`        | The donor submits the wizard | Validates the form, saves the donation, and (for ship/drop-off) sends the confirmation email right away                                                |
+| `handleGivebutterWebhook`      | Givebutter reports a payment | Confirms the payment matches a real donation, books the Roadie courier, and emails the pickup confirmation. If the booking fails, marks it for a human |
+| `sendStalledDonationSlaEmails` | Every hour                   | Reassures donors whose payment went through but whose courier booking failed                                                                           |
+| `sendStalledRecoveryEmails`    | Every day, 9 AM ET           | Nudges donors who started a pickup but never finished paying                                                                                           |
 
 The last two are the automatic safety nets described in the lifecycle doc.
 
@@ -122,7 +122,7 @@ The last two are the automatic safety nets described in the lifecycle doc.
 
 - **The public can only create, never read broadly.** The database rules let anyone
   submit a donation, but nobody can list or browse other people's donations. A donor
-  can only look up their *own* donation, and only because they hold its unguessable ID.
+  can only look up their _own_ donation, and only because they hold its unguessable ID.
 - **Payment messages are authenticated.** The Givebutter → backend message is signed
   with a shared secret. If the signature is missing or wrong, the backend rejects it —
   so nobody can fake a "payment happened" message to get a free courier. If the secret
@@ -206,4 +206,7 @@ repository `README.md` for local emulator setup and the full env-var list.
 > `lookupDonationByReference` functions). Those are **gone** — the live design is the
 > four functions above with the webhook as the only path to dispatch. Trust this doc
 > and the code; the README needs a cleanup pass.
+
+```
+
 ```

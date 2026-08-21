@@ -22,11 +22,11 @@ system automatically.
 
 ## The three apps
 
-| App | What it's for | Who uses it |
-| --- | --- | --- |
-| **Donation app** | The public website where donors arrange a pickup, shipment, or drop-off | The public (donors) |
-| **Inventory system (IMS)** | Manages the warehouse's stock — what's come in, what's on hand | The warehouse / ops team |
-| **Data dashboard** | Reporting and analytics across everything | Leadership / staff |
+| App                        | What it's for                                                           | Who uses it              |
+| -------------------------- | ----------------------------------------------------------------------- | ------------------------ |
+| **Donation app**           | The public website where donors arrange a pickup, shipment, or drop-off | The public (donors)      |
+| **Inventory system (IMS)** | Manages the warehouse's stock — what's come in, what's on hand          | The warehouse / ops team |
+| **Data dashboard**         | Reporting and analytics across everything                               | Leadership / staff       |
 
 ---
 
@@ -64,17 +64,17 @@ diagram-first version for a fast read. Pick whichever fits the moment.
 
 ### Donation app
 
-| Doc | What it's for | Detailed | Quick |
-| --- | --- | --- | --- |
-| **Architecture** | How the app is built — the pieces and how they connect | [read](architecture-donation-app.md) | [quick](architecture-donation-app-simple.md) |
-| **Donation Lifecycle & State Machine** | What a donation does, and how to troubleshoot a stuck one | [read](donation-lifecycle-state-machine.md) | [quick](donation-lifecycle-simple.md) |
-| **Internal User Guide** | Running donations day to day (for the team) | [read](user-guide-internal.md) | [quick](user-guide-internal-simple.md) |
-| **External User Guide** | How to donate (for donors) | [read](user-guide-external.md) | [quick](user-guide-external-simple.md) |
+| Doc                                    | What it's for                                             | Detailed                                    | Quick                                        |
+| -------------------------------------- | --------------------------------------------------------- | ------------------------------------------- | -------------------------------------------- |
+| **Architecture**                       | How the app is built — the pieces and how they connect    | [read](architecture-donation-app.md)        | [quick](architecture-donation-app-simple.md) |
+| **Donation Lifecycle & State Machine** | What a donation does, and how to troubleshoot a stuck one | [read](donation-lifecycle-state-machine.md) | [quick](donation-lifecycle-simple.md)        |
+| **Internal User Guide**                | Running donations day to day (for the team)               | [read](user-guide-internal.md)              | [quick](user-guide-internal-simple.md)       |
+| **External User Guide**                | How to donate (for donors)                                | [read](user-guide-external.md)              | [quick](user-guide-external-simple.md)       |
 
 ### Everything
 
-| Doc | What it's for | Detailed | Quick |
-| --- | --- | --- | --- |
+| Doc                     | What it's for                                | Detailed                         | Quick                                    |
+| ----------------------- | -------------------------------------------- | -------------------------------- | ---------------------------------------- |
 | **Accounts & Services** | Every account, who owns it, where to sign in | [read](accounts-and-services.md) | [quick](accounts-and-services-simple.md) |
 
 ### Coming later

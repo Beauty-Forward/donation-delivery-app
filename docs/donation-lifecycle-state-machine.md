@@ -13,7 +13,7 @@ Every donation is a single record in our database with a **status** — a one-wo
 label saying where it is in its journey. There are only **five** statuses. Most of
 the time a donation reaches its resting status within seconds and never moves again.
 When something goes wrong, the status is the first place you look — it tells you
-*exactly* what happened and what to do next.
+_exactly_ what happened and what to do next.
 
 The system moves donations between statuses automatically. Nobody sets a status by
 hand in the normal course of business. A human only steps in when a donation gets
@@ -25,11 +25,11 @@ hand in the normal course of business. A human only steps in when a donation get
 
 A donor picks one of three ways to give, and each follows its own short path:
 
-| Method | What the donor does | Involves payment? |
-| --- | --- | --- |
-| **Pickup** | A courier (Roadie) collects the items from the donor's address | **Yes** — a courier is only booked once a contribution is confirmed |
-| **Ship** | The donor mails the items to the warehouse themselves | No |
-| **Drop-off** | The donor brings the items to a location in person | No |
+| Method       | What the donor does                                            | Involves payment?                                                   |
+| ------------ | -------------------------------------------------------------- | ------------------------------------------------------------------- |
+| **Pickup**   | A courier (Roadie) collects the items from the donor's address | **Yes** — a courier is only booked once a contribution is confirmed |
+| **Ship**     | The donor mails the items to the warehouse themselves          | No                                                                  |
+| **Drop-off** | The donor brings the items to a location in person             | No                                                                  |
 
 Only **pickup** has moving parts worth watching. Ship and drop-off are recorded and
 done — there's nothing for the system to chase.
@@ -38,13 +38,13 @@ done — there's nothing for the system to chase.
 
 ## The five statuses at a glance
 
-| Status | Applies to | What it means | Is this normal? |
-| --- | --- | --- | --- |
-| `verifying_payment` | Pickup | Request received; we're waiting for the donor's contribution to be confirmed before booking a courier | ✅ Normal for a few minutes. ⚠️ A problem if it sits here for hours |
-| `queued_for_dispatch` | Pickup | Contribution confirmed **and** courier successfully booked. Roadie takes it from here | ✅ This is the finish line for a pickup |
-| `dispatch_failed` | Pickup | Contribution confirmed, but the courier booking failed. **The donor paid; no courier is coming yet** | ⚠️ Always needs a human to rebook |
-| `awaiting_shipment` | Ship | Request recorded; donor was told the warehouse address and will mail the items | ✅ Finished on our end |
-| `dropoff_requested` | Drop-off | Request recorded; donor was given a reference code to bring in | ✅ Finished on our end |
+| Status                | Applies to | What it means                                                                                         | Is this normal?                                                     |
+| --------------------- | ---------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `verifying_payment`   | Pickup     | Request received; we're waiting for the donor's contribution to be confirmed before booking a courier | ✅ Normal for a few minutes. ⚠️ A problem if it sits here for hours |
+| `queued_for_dispatch` | Pickup     | Contribution confirmed **and** courier successfully booked. Roadie takes it from here                 | ✅ This is the finish line for a pickup                             |
+| `dispatch_failed`     | Pickup     | Contribution confirmed, but the courier booking failed. **The donor paid; no courier is coming yet**  | ⚠️ Always needs a human to rebook                                   |
+| `awaiting_shipment`   | Ship       | Request recorded; donor was told the warehouse address and will mail the items                        | ✅ Finished on our end                                              |
+| `dropoff_requested`   | Drop-off   | Request recorded; donor was given a reference code to bring in                                        | ✅ Finished on our end                                              |
 
 > **The one status that always needs you:** `dispatch_failed`. It means the money
 > came through but the courier didn't get booked. The system will email the donor a
@@ -91,7 +91,7 @@ qualifying contribution actually went through.
 **2. Givebutter tells us the payment succeeded.**
 When the donor completes their contribution, Givebutter sends us an automatic
 message (a "webhook" — one system pinging another to say "this just happened").
-That message is the *only* trigger that moves a pickup forward. Two things can happen
+That message is the _only_ trigger that moves a pickup forward. Two things can happen
 from here:
 
 - **The courier books successfully → `queued_for_dispatch`.** We book Roadie, save
@@ -159,9 +159,9 @@ This is normal and expected — not every visitor completes.
   by the donor's email around the time they submitted.
 - **If no payment exists:** nothing is broken. The donor abandoned checkout. The daily
   recovery email (Safety net 2) will nudge them once it's 24 hours old. No action needed.
-- **If a payment *does* exist** but the donation is still `verifying_payment` after
+- **If a payment _does_ exist** but the donation is still `verifying_payment` after
   several minutes: the confirmation message from Givebutter may not have reached us (see
-  *The one known gap* below). Escalate to your technical contact — this one needs a look
+  _The one known gap_ below). Escalate to your technical help — this one needs a look
   at the logs.
 
 ### `dispatch_failed`
@@ -172,7 +172,7 @@ donor is expecting a pickup and none is booked.**
 - **The donor has already been reassured** automatically (Safety net 1), so you have a
   little breathing room — but not much.
 - **The fix is manual:** rebook the courier. Depending on how your team operates, that's
-  either rebooking directly in the **Roadie** dashboard, or having your technical contact
+  either rebooking directly in the **Roadie** dashboard, or having your technical help
   re-run the booking. Once a courier is booked, the donation should move to
   `queued_for_dispatch`.
 - **Worth noting for a pattern:** a single `dispatch_failed` is usually a transient
@@ -181,7 +181,7 @@ donor is expecting a pickup and none is booked.**
 
 ### `queued_for_dispatch` but the donor says no driver came
 
-This status means Roadie *accepted* the booking. After this point the pickup lives in
+This status means Roadie _accepted_ the booking. After this point the pickup lives in
 **Roadie's** system, and the driver updates come from Roadie directly.
 
 - **Check the courier's status in the Roadie dashboard** using the tracking ID saved on
@@ -191,7 +191,7 @@ This status means Roadie *accepted* the booking. After this point the pickup liv
 
 ### `awaiting_shipment` / `dropoff_requested` that "never arrived"
 
-These statuses only mean *the donor told us their intention*. They don't track whether
+These statuses only mean _the donor told us their intention_. They don't track whether
 the physical items showed up — we have no signal for that. A donor who requested a
 drop-off or said they'd ship but never did will simply stay in this status forever, and
 that's expected. There's nothing to fix in the app.
@@ -204,7 +204,7 @@ There is a single scenario the system genuinely can't catch, and it's worth
 understanding so it doesn't look like a bug.
 
 When a donor pays, Givebutter's confirmation message carries a hidden tag that tells us
-*which* donation the payment belongs to. If a donor somehow reaches Givebutter and pays
+_which_ donation the payment belongs to. If a donor somehow reaches Givebutter and pays
 **without that tag attached** — for example by finding the campaign through a different
 link — the payment succeeds on Givebutter's side, but our system has no way to match it
 back to a donation. The donation stays in `verifying_payment`, and the donor's real
@@ -215,19 +215,19 @@ payment leaves **no trace in our app.**
 - **How to confirm:** find the matching contribution in **Givebutter** by email/amount.
   If it's there but our donation never advanced, this is the orphaned-payment case.
 - **What to do:** treat it as a manual rescue — confirm the payment in Givebutter, then
-  have your technical contact book the courier for that donation by hand. This scenario
+  have your technical help book the courier for that donation by hand. This scenario
   is on the v2 improvement list to close properly.
 
 ---
 
 ## Where each status lives (quick reference)
 
-| To check… | Look in… |
-| --- | --- |
-| A donation's current status and history | **Firebase** (the `donation_requests` database) |
-| Whether a contribution actually went through | **Givebutter** |
-| Where a booked courier is | **Roadie** |
-| Whether a donor email was sent | **Resend** (email logs) — and the donation's own record notes when each email went out |
+| To check…                                    | Look in…                                                                               |
+| -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| A donation's current status and history      | **Firebase** (the `donation_requests` database)                                        |
+| Whether a contribution actually went through | **Givebutter**                                                                         |
+| Where a booked courier is                    | **Roadie**                                                                             |
+| Whether a donor email was sent               | **Resend** (email logs) — and the donation's own record notes when each email went out |
 
 > Detailed sign-in instructions and account ownership for each of these live in the
 > **Accounts & Services** document.
@@ -253,6 +253,9 @@ The precise mechanics behind the plain-English description above:
   window) in `functions/src/sendSlaEmails.ts`. Each is idempotent via a per-email
   timestamp flag (`slaEmailSentAt`, `recoveryEmailSentAt`, `confirmationEmailSentAt`).
 - **Orphaned payments** are the direct consequence of matching on `utm_campaign`: no
-  tag, no match. The webhook only ever *updates* an existing donation; it never creates
+  tag, no match. The webhook only ever _updates_ an existing donation; it never creates
   one.
+
+```
+
 ```

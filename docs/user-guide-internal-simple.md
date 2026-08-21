@@ -1,6 +1,6 @@
 # Team Guide — Quick Version
 
-*Running donations day to day. (More detail? See [the full guide](user-guide-internal.md).)*
+_Running donations day to day. (More detail? See [the full guide](user-guide-internal.md).)_
 
 ---
 
@@ -10,7 +10,7 @@
 - 🚚 **Roadie** → where's the courier? (and book/rebook one)
 
 Everything else runs automatically. You **don't** touch the database — that's your
-**technical contact**.
+**technical partner**.
 
 ---
 
@@ -25,7 +25,7 @@ flowchart TD
     A --> A2["Check 💳 Givebutter"]
     B --> B2["Check 🚚 Roadie"]
     C --> C2{Did they pay?<br/>Check Givebutter}
-    C2 -->|Yes, but no courier| C3["🚚 Rebook in Roadie<br/>+ tell your tech contact"]
+    C2 -->|Yes, but no courier| C3["🚚 Rebook in Roadie<br/>+ tell your tech support"]
     C2 -->|No payment| C4["They didn't finish —<br/>ask them to complete it"]
 
     style C3 fill:#ffe0b2,stroke:#e65100
@@ -36,9 +36,9 @@ flowchart TD
 ## The one thing that's yours to fix
 
 **Paid, but no courier booked** → **rebook it in Roadie.** Then let your technical
-contact know so they can tidy the record.
+support know so they can tidy the record.
 
-*One now and then = normal. Several at once = escalate.*
+_One now and then = normal. Several at once = escalate._
 
 ---
 
@@ -49,11 +49,11 @@ contact know so they can tidy the record.
 
 ---
 
-## Escalate to your tech contact when…
+## Escalate to your tech support when…
 
 - Payment shows in Givebutter but nothing happened for days
 - A donor got **no email at all**
 - **Several** failed bookings at once
 - Anything needing a look **inside the database**
 
-*Include: donor name + email, when, which method, what they're seeing.*
+_Include: donor name + email, when, which method, what they're seeing._

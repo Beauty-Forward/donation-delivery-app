@@ -1,7 +1,7 @@
 # Beauty Forward Software — Quick Map
 
-*Three apps, one shared database. (More detail? See
-[the detailed version](system-overview.md).)*
+_Three apps, one shared database. (More detail? See
+[the detailed version](system-overview.md).)_
 
 ---
 

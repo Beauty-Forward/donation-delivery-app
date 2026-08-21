@@ -1,20 +1,20 @@
 # Accounts & Services — Quick Guide
 
-*Every account the app uses, and where to sign in. **No passwords or secret values live
+_Every account the app uses, and where to sign in. **No passwords or secret values live
 in this doc — or should ever be added to it.** (Full detail? See
-[the detailed version](accounts-and-services.md).)*
+[the detailed version](accounts-and-services.md).)_
 
 ---
 
 ## Who owns what
 
-| Service | What it's for | Owned by |
-| --- | --- | --- |
-| 🔥 **Firebase / Google Cloud** | Database, backend, website, secrets | ⏳ Developer's account — **being transferred to BF** |
-| 💳 **Givebutter** | Takes the contribution | ✅ Beauty Forward |
-| 🚚 **Roadie** | The courier | ✅ Beauty Forward (team has logins) |
-| ✉️ **Resend** | Sends the emails | ✅ Beauty Forward (`info@beauty-forward.org`) |
-| 💻 **GitHub** | The code | ✅ Beauty Forward (admin) |
+| Service                        | What it's for                       | Owned by                                       |
+| ------------------------------ | ----------------------------------- | ---------------------------------------------- |
+| 🔥 **Firebase / Google Cloud** | Database, backend, website, secrets | ⏳ Dev's account — **being transferred to BF** |
+| 💳 **Givebutter**              | Takes the contribution              | ✅ Beauty Forward                              |
+| 🚚 **Roadie**                  | The courier                         | ✅ Beauty Forward (team has logins)            |
+| ✉️ **Resend**                  | Sends the emails                    | ✅ Beauty Forward (`info@beauty-forward.org`)  |
+| 💻 **GitHub**                  | The code                            | ✅ Beauty Forward (admin)                      |
 
 ---
 

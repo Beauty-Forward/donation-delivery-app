@@ -4,23 +4,23 @@
 > every outside account the app depends on, who owns it, where to sign in, and where its
 > keys live.
 >
-> **This document contains no passwords and no secret key values.** It says *where* each
-> secret lives and *how* to change it — never the secret itself. Keep it that way.
+> **This document contains no passwords and no secret key values.** It says _where_ each
+> secret lives and _how_ to change it — never the secret itself. Keep it that way.
 
 ---
 
 ## Ownership & handover status
 
-| Service | Owned by | Status |
-| --- | --- | --- |
-| **Firebase / Google Cloud** | Currently the developer's personal Google account | ⏳ **To be transferred to Beauty Forward** as part of project close-out |
-| **Givebutter** | Beauty Forward | ✅ Owned by BF — *confirm campaign visibility (below)* |
-| **Roadie** | Beauty Forward | ✅ Owned by BF; team has their own logins |
-| **Resend** | Beauty Forward (`info@beauty-forward.org`) | ✅ Owned by BF |
-| **GitHub** | Beauty Forward org | ✅ BF has admin on the repo |
+| Service                     | Owned by                                    | Status                                                                  |
+| --------------------------- | ------------------------------------------- | ----------------------------------------------------------------------- |
+| **Firebase / Google Cloud** | Currently the dev's personal Google account | ⏳ **To be transferred to Beauty Forward** as part of project close-out |
+| **Givebutter**              | Beauty Forward                              | ✅ Owned by BF — _confirm campaign visibility (below)_                  |
+| **Roadie**                  | Beauty Forward                              | ✅ Owned by BF; team has their own logins                               |
+| **Resend**                  | Beauty Forward (`info@beauty-forward.org`)  | ✅ Owned by BF                                                          |
+| **GitHub**                  | Beauty Forward org                          | ✅ BF has admin on the repo                                             |
 
 > The two things that still need to happen are the **Firebase/Google Cloud transfer** and
-> **confirming Givebutter campaign visibility** — both are in the *Handover checklist* at
+> **confirming Givebutter campaign visibility** — both are in the _Handover checklist_ at
 > the end.
 
 ---
@@ -34,12 +34,12 @@ The backbone. Hosts the database, the backend, the secrets, and the live website
   (Firebase App Hosting). Project ID: **`beauty-forward`**.
 - **Sign in:** [console.firebase.google.com](https://console.firebase.google.com) →
   project `beauty-forward`.
-- **Who owns it today:** the developer's personal Google account, on the developer's
+- **Who owns it today:** the dev's personal Google account, on the dev's
   card. **This is the one account that still needs to be handed over** — both the
   Firebase project and the underlying Google Cloud billing account. See the handover
   checklist.
-- **Amount spent to date:** ⬜ *(to be filled from the Google Cloud billing console for
-  the handover conversation)*.
+- **Amount spent to date:** ⬜ _(to be filled from the Google Cloud billing console for
+  the handover conversation)_.
 - **How access works:** there's no day-to-day API key to rotate here. Access is by
   **who's invited to the Google project** (permissions), plus the Firebase command-line
   tool for deploying. The website's Firebase config that appears in the app's code
@@ -56,16 +56,16 @@ is what unlocks the courier.
 - **Sign in:** [givebutter.com](https://givebutter.com). Public campaign:
   [givebutter.com/beauty-forward](https://givebutter.com/beauty-forward).
 - **Owned by:** Beauty Forward. **The team logs in here today.**
-- **⚠️ Confirm:** the campaigns were originally created from the developer's account.
+- **⚠️ Confirm:** the campaigns were originally created from the dev's account.
   Verify that the Beauty Forward login sees **the same campaigns** — if not, they need to
-  be shared/transferred to the BF account. *(Handover checklist item.)*
+  be shared/transferred to the BF account. _(Handover checklist item.)_
 - **Minimum contribution for a pickup:** **$15** (adjustable — see the appendix).
 - **Two keys, two homes:**
   - The lookup key lives in the backend's plain settings file.
   - The **webhook signing secret** — the shared password that proves a "payment
     happened" message really came from Givebutter — lives in **Firebase's secret store.**
     You find its value in Givebutter under **Settings → Webhooks**.
-  - **Rotating the webhook secret is a two-step move:** change it in Givebutter *and*
+  - **Rotating the webhook secret is a two-step move:** change it in Givebutter _and_
     update the Firebase secret **together**. If they don't match, the backend rejects
     every payment message (it's built to fail safe), and pickups will silently stop being
     dispatched.
@@ -81,7 +81,7 @@ Books and runs the courier who collects a pickup and brings it to the warehouse.
 - **Owned by:** Beauty Forward. **The team has their own Roadie logins** and can view
   and rebook couriers directly.
 - **Key:** the Roadie API key lives in **Firebase's secret store** (never in the plain
-  settings file). A separate *test* key is used only for local development.
+  settings file). A separate _test_ key is used only for local development.
 - **Worth confirming once:** that production Roadie is actually live (not still pointing
   at the test environment) — see the handover checklist.
 
@@ -101,7 +101,7 @@ the "we're on it" reassurance note.
   successfully donate but not receive an email if Resend is misconfigured; the donation
   is still safe in the database.
 - **Sending address:** emails send from a `beauty-forward.org` address. For emails to
-  reach *all* donors (not just the account owner), the sending domain must be verified in
+  reach _all_ donors (not just the account owner), the sending domain must be verified in
   Resend via DNS. Confirm the domain is verified in production.
 
 ---
@@ -119,11 +119,11 @@ the "we're on it" reassurance note.
 
 Three different homes, by sensitivity:
 
-| Home | What's in it | Who can see it |
-| --- | --- | --- |
-| **Firebase secret store** (Secret Manager) | The most sensitive keys: the Roadie key and the Givebutter webhook signing secret | Only people with access to the Firebase project |
-| **Backend settings file** (`functions/.env`) | Less-sensitive backend settings: the Givebutter lookup key, the Resend key + from-address, the courier/warehouse details | In the deployed backend; **not** in the public code repo |
-| **Public website config** (`src/environments/`) | The Firebase web config — **public by design, not a secret** | Anyone (it's in the shipped website) |
+| Home                                            | What's in it                                                                                                             | Who can see it                                           |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| **Firebase secret store** (Secret Manager)      | The most sensitive keys: the Roadie key and the Givebutter webhook signing secret                                        | Only people with access to the Firebase project          |
+| **Backend settings file** (`functions/.env`)    | Less-sensitive backend settings: the Givebutter lookup key, the Resend key + from-address, the courier/warehouse details | In the deployed backend; **not** in the public code repo |
+| **Public website config** (`src/environments/`) | The Firebase web config — **public by design, not a secret**                                                             | Anyone (it's in the shipped website)                     |
 
 > **Never** put a Firebase-secret-store value into the plain settings file or the code
 > repo. The split exists on purpose.
@@ -134,12 +134,12 @@ Three different homes, by sensitivity:
 
 The open items to close out ownership:
 
-- ⬜ **Transfer the Firebase project and Google Cloud billing** from the developer's
-  personal Google account to a Beauty Forward-owned account. *(Tied to project
-  close-out / final payment.)*
+- ⬜ **Transfer the Firebase project and Google Cloud billing** from the dev's
+  personal Google account to a Beauty Forward-owned account. _(Tied to project
+  close-out / final payment.)_
 - ⬜ **Record the Firebase/Google Cloud spend to date** for the handover conversation.
 - ⬜ **Confirm the Beauty Forward Givebutter login sees the same campaigns** the app
-  uses (they were created from the developer's account).
+  uses (they were created from dev's account).
 - ⬜ **Confirm production Roadie is live** and the production key — not the test key — is
   set as the Firebase secret.
 - ⬜ **Confirm the Resend sending domain is verified** so emails reach all donors.
@@ -149,6 +149,7 @@ The open items to close out ownership:
 ## Appendix — for the technical successor
 
 **Secret store vs env, by exact name.**
+
 - **Firebase secrets** (`firebase functions:secrets:set <NAME>`): `ROADIE_API_KEY`,
   `GIVEBUTTER_WEBHOOK_SIGNATURE`. These are declared as secrets in code
   (`defineSecret`) and are **not** in `.env.example`.
