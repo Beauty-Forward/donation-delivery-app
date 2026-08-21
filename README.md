@@ -1,18 +1,27 @@
 # Beauty Forward Donation Logistics
 
-Public-facing donation logistics app: donors schedule a courier pickup, ship products to the warehouse themselves, or reserve a drop-off slot. Built with Angular + Firebase, with real integrations for courier dispatch (Roadie), donations (Givebutter), and transactional email (Resend).
+Public-facing donation logistics app: donors schedule a courier pickup, ship products to the warehouse themselves, or drop items off in person. Built with Angular + Firebase, with real integrations for courier dispatch (Roadie), donations (Givebutter), and transactional email (Resend).
 
 **Live:** https://donation-delivery-app--beauty-forward.us-east4.hosted.app/
 
+## 📚 Documentation
+
+Full documentation for the team and future maintainers lives in [`docs/`](docs/) — start
+with the **[System Overview](docs/system-overview.md)** *([quick version](docs/system-overview-simple.md))*,
+which indexes everything: architecture, the donation lifecycle & troubleshooting,
+accounts, and the user guides. Those docs are kept accurate against the code; where this
+README and the docs disagree, trust the docs.
+
 ## How It Works
 
-Donors pick one of three methods and complete a short wizard:
+Donors pick one of three methods and complete a short wizard — no login required:
 
-- **Schedule Pickup** — capture donor + pickup address, a preferred date/time window, and a fixed (non-editable) warehouse destination. A pay-what-you-wish Givebutter contribution is part of this flow; **courier dispatch is gated on a verified contribution** at or above `PICKUP_DONATION_MIN_USD`.
-- **Ship Products** — capture sender details. The donor ships the package to the warehouse themselves; there is no prepaid label. The request is recorded as `awaiting_shipment`.
-- **Schedule Drop-Off** — capture donor details and a slot request; a drop-off reference code is generated for the donor to bring in.
+- **Schedule Pickup** — a courier (Roadie) collects the items. Dispatch is gated on a verified Givebutter contribution at or above `PICKUP_DONATION_MIN_USD`.
+- **Ship Products** — the donor mails the items to the warehouse themselves (no prepaid label).
+- **Drop-Off** — the donor brings the items to the front desk during opening hours.
 
-No authentication is required. The data model leaves room for accounts (`donorAccountId`) but nothing sets it yet.
+For the donor-facing walkthrough, see the **[External User Guide](docs/user-guide-external.md)**;
+for day-to-day operations, see the **[Internal User Guide](docs/user-guide-internal.md)**.
 
 ## Tech Stack
 
@@ -22,133 +31,21 @@ No authentication is required. The data model leaves room for accounts (`donorAc
 - **Integrations:** Roadie (courier), Givebutter (donations), Resend (email)
 - **Tests:** Vitest (functions), Karma/Jasmine via `ng test` (frontend)
 
-## Architecture at a Glance
+## How It Works Under the Hood
 
-```text
-Donor (browser, Angular wizard)
-   │  createDonationRequest (onCall)
-   ▼
-Cloud Functions ──► Firestore (donation_requests + type-specific collections)
-   │                     │
-   │                     └─ onDocumentCreated ──► verifyContributionAndDispatch (backstop)
-   ├─► Givebutter  (verify contribution against /v1/transactions)
-   ├─► Roadie      (book courier for verified pickups)
-   └─► Resend      (confirmation email)
-```
+The full technical picture — the moving parts, the donation lifecycle and its statuses,
+the Firestore data model, the Cloud Functions, and the integrations — lives in the docs,
+kept accurate against the code:
 
-The pickup happy path verifies the donation and dispatches the courier **synchronously** inside `createDonationRequest`. `verifyContributionAndDispatch` is a Firestore `onCreate` trigger that re-runs the same logic as a **backstop** if the synchronous path didn't resolve (e.g. the donor paid after submitting). `handleGivebutterWebhook` is a further recovery path.
+- **[Architecture](docs/architecture-donation-app.md)** — the components, data flow, data model, and Cloud Functions *([quick version](docs/architecture-donation-app-simple.md))*
+- **[Donation Lifecycle & State Machine](docs/donation-lifecycle-state-machine.md)** — every status, how a donation moves, and how to troubleshoot a stuck one *([quick version](docs/donation-lifecycle-simple.md))*
+- **[Accounts & Services](docs/accounts-and-services.md)** — the integrations, who owns each, and where keys live *([quick version](docs/accounts-and-services-simple.md))*
 
-## Project Structure
-
-```text
-src/app/
-├── core/
-│   ├── constants/        time-windows.ts, us-states.ts
-│   ├── guards/           flow.guard.ts
-│   ├── models/           donation.models.ts
-│   └── services/
-│       ├── donation-wizard-state.service.ts   # state machine behind the wizard
-│       ├── donation-api.service.ts            # calls the Cloud Functions / Firestore
-│       ├── warehouse-config.service.ts
-│       ├── contribution.service.ts
-│       ├── firebase-client.service.ts
-│       └── donation-flow-state.service.ts
-├── features/
-│   ├── wizard/           donation-wizard-page.component.*  ← the donor flow (all methods)
-│   ├── method-selection/ pickup/ dropoff/   ← earlier per-step components (see note)
-├── shared/components/    contribution-panel/, donation-option-card/
-└── app.routes.ts
-
-functions/src/
-├── index.ts              # all Cloud Functions entry points
-├── models.ts             # shared types (DonationStatus, payloads, etc.)
-├── validators.ts         # Zod schemas for inbound payloads
-├── dispatch-routing.ts   # routing guard for the verify+dispatch trigger
-├── firestore-utils.ts
-├── warehouse.ts
-├── services/             # roadie, givebutter, resend, dispatch
-├── email/templates/      # base-layout + pickup/shipping/dropoff/recovery emails
-└── utils/dropoff-reference.ts
-
-firebase.json · firestore.rules · firestore.indexes.json
-```
-
-> **Note on the donor UI:** all three flows are rendered by the single
-> `features/wizard/donation-wizard-page.component.ts`, switched by the route's
-> `data.mode`. The standalone components under `features/method-selection`,
-> `features/pickup`, and `features/dropoff` are earlier per-step versions and are
-> **not currently routed** — don't edit them expecting to change the live flow.
-
-## Routing
-
-Every route loads the wizard component; `data.mode` tells it which step to render.
-
-- `/` — method selection (home)
-- `/pickup` → `/pickup/review` → `/pickup/confirmation`
-- `/shipping` → `/shipping/review` → `/shipping/confirmation`
-- `/dropoff` → `/dropoff/review` → `/dropoff/confirmation`
-
-## Firestore Data Model
-
-### Primary collection — `donation_requests/{requestId}`
-
-```ts
-{
-  donationType: 'pickup' | 'shipping' | 'dropoff',
-  donor: { fullName, email, phone, donorAccountId? },
-  contribution: {
-    provider: 'givebutter',
-    status: 'not_started' | 'checkout_started' | 'completed' | 'skipped',
-    amountUsd?, checkoutUrl?, gbSessionId?
-  },
-  pickup?:   { pickupAddress, preferredDate, preferredTimeWindow, courierNotes?, warehouseAddress },
-  shipping?: { senderAddress, packageNotes? },
-  dropoff?:  { locationName, locationAddress },
-  status: DonationStatus,
-  createdAt, updatedAt, metadata
-}
-```
-
-`DonationStatus` is one of: `submitted`, `verifying_payment`,
-`payment_verification_failed`, `queued_for_dispatch`, `dispatch_requested`,
-`awaiting_shipment`, `dropoff_requested`, `completed`.
-
-`donation_requests` is the single source of truth — every donation type lives there,
-distinguished by `donationType`.
-
-### Security rules
-
-`firestore.rules` is create-only: `donation_requests` is `allow create: if true`, with
-reads, updates, and deletes denied. Validation is enforced server-side by the Cloud
-Functions callables and their Zod validators; direct client `create` is a fallback path.
-
-## Cloud Functions
-
-All in `functions/src/index.ts`, region `us-central1`, codebase `donor`:
-
-| Function                        | Trigger             | Purpose                                                                                                                                                                                                                                                       |
-| ------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createDonationRequest`         | `onCall`            | Validates payload, writes `donation_requests` + the type-specific doc, generates a drop-off reference for drop-offs, and (for pickups) verifies the Givebutter contribution and dispatches Roadie synchronously. Marks shipping requests `awaiting_shipment`. |
-| `createContributionSession`     | `onCall`            | Returns a Givebutter checkout URL for the pickup contribution flow.                                                                                                                                                                                           |
-| `verifyContributionAndDispatch` | `onDocumentCreated` | Backstop: re-verifies the contribution and dispatches the courier if the synchronous path didn't resolve.                                                                                                                                                     |
-| `handleGivebutterWebhook`       | `onRequest`         | Recovery path for contribution status updates. ⚠️ Signature verification is not yet implemented.                                                                                                                                                              |
-| `lookupDonationByReference`     | `onCall`            | Looks up a donation by its drop-off reference code.                                                                                                                                                                                                           |
-
-## Integrations
-
-### Roadie (courier dispatch)
-
-- `RoadieCourierService` calls a Roadie courier. Gated on a $15 donation.
-- The donation `requestId` is forwarded to Roadie as the idempotency_key to prevent duplicate bookings.
-
-### Givebutter (donations)
-
-- `GivebutterService` verifies contributions **server-to-server** against Givebutter's `/v1/transactions` endpoint (matching donor email + amount within a lookback window) before dispatch.
-- Checkout **session creation** is still a URL builder, not a real Givebutter session API call (tracked in the v2 backlog).
-
-### Resend (email)
-
-- `ResendService` sends pickup / shipping / drop-off confirmation emails (templates in `functions/src/email/templates/`). No-ops with a warning if `RESEND_API_KEY` is unset, so the happy path never breaks in unconfigured environments.
+> **Donor UI note:** a single component renders all three donor flows
+> (`features/wizard/donation-wizard-page.component.ts`), switched by each route's
+> `data.mode`. The earlier per-step components under `features/method-selection`,
+> `features/pickup`, and `features/dropoff` are **not routed** — don't edit them
+> expecting to change the live flow.
 
 ## Environment Configuration
 
@@ -158,15 +55,16 @@ Frontend config lives in `src/environments/environment.ts` and `environment.deve
 Backend config is in `functions/.env` (copy from `functions/.env.example`, which documents
 every variable). Highlights:
 
-- `ROADIE_API_KEY` — **secret**, set via `firebase functions:secrets:set ROADIE_API_KEY` (Secret Manager), never in `.env`. Sandbox key goes in `.env.local` for local dev.
+- **Firebase secrets** (Secret Manager, never in `.env`), set via `firebase functions:secrets:set <NAME>`: `ROADIE_API_KEY` and `GIVEBUTTER_WEBHOOK_SIGNATURE`. A Roadie sandbox key goes in `.env.local` for local dev.
 - `ROADIE_API_BASE_URL`, `WAREHOUSE_CONTACT_NAME`, `WAREHOUSE_CONTACT_PHONE`
 - `GIVEBUTTER_CAMPAIGN_URL`, `GIVEBUTTER_API_KEY`
 - `PICKUP_DONATION_MIN_USD` — minimum verified contribution to unlock pickup dispatch
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL`
-- Local-only escape hatches (`.env.local`): `SKIP_GIVEBUTTER_VERIFICATION`, `FIRESTORE_EMULATOR_HOST`
+- Local-only escape hatches (`.env.local`): `SKIP_GIVEBUTTER_VERIFICATION`, `FIRESTORE_EMULATOR_HOST`, a throwaway `GIVEBUTTER_WEBHOOK_SIGNATURE`
 
-> `.env` is deployed to Cloud Functions (no secrets); `.env.local` is never deployed.
-> Both are gitignored.
+> `.env` is deployed to Cloud Functions (no true secrets); `.env.local` is never deployed.
+> Both are gitignored. For account ownership and key-rotation details, see
+> **[Accounts & Services](docs/accounts-and-services.md)**.
 
 ## Local Setup
 
@@ -207,6 +105,6 @@ tracker stays focused on active work:
 **[Beauty Forward — v2 / Next Iteration Backlog](https://www.notion.so/3732e4b9dae981efbbd8c61476c4a43e)**
 
 Current donation-app items there include Firebase Auth + donor accounts, a real Givebutter
-checkout session API call, Givebutter webhook signature verification, a real prepaid
-shipping-label provider, an admin dashboard, and hardening the Firestore rules. Promote an
-item back to a GitHub issue when it's scoped for a build cycle.
+checkout session API call, a real prepaid shipping-label provider, an admin dashboard, and
+hardening the Firestore rules. Promote an item back to a GitHub issue when it's scoped for
+a build cycle.
